@@ -1,0 +1,61 @@
+# =========================
+# Node / Frontend
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# =========================
+# Java / Backend
+# =========================
+backend/target/
+backend/*.jar
+backend/.settings/
+backend/.project
+backend/.classpath
+backend/.factorypath
+
+# =========================
+# Python / ML Pipeline
+# =========================
+ml-pipeline/__pycache__/
+ml-pipeline/**/__pycache__/
+ml-pipeline/*.pyc
+ml-pipeline/.venv/
+ml-pipeline/venv/
+ml-pipeline/mlruns/
+ml-pipeline/data/raw/*
+ml-pipeline/data/processed/*
+ml-pipeline/models/*
+!ml-pipeline/data/raw/.gitkeep
+!ml-pipeline/data/processed/.gitkeep
+!ml-pipeline/models/.gitkeep
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Claude
+# =========================
+.claude/
+
+# =========================
+# Environment
+# =========================
+.env
+.env.local
+.env.*.local
