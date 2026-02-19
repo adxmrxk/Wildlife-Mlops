@@ -54,6 +54,14 @@ desktop.ini
 .claude/
 
 # =========================
+# Terraform
+# =========================
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfplan
+
+# =========================
 # Environment
 # =========================
 .env

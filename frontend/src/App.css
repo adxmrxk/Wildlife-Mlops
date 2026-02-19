@@ -1,49 +1,85 @@
 .app {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at top, rgba(168, 85, 247, 0.15), transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(0, 212, 255, 0.15), transparent 50%),
+    linear-gradient(180deg, #0f0f23 0%, #1a1a2e 100%);
+  background-attachment: fixed;
+  position: relative;
+  overflow-x: hidden;
 }
 
-.app-header {
-  text-align: center;
-  margin-bottom: 3rem;
-  padding: 2rem;
-  background: linear-gradient(135deg, #1a472a 0%, #2d5016 100%);
-  border-radius: 12px;
-  color: #fff;
+/* Animated background particles */
+.app::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(circle at 20% 30%, var(--primary-glow) 0%, transparent 25%),
+    radial-gradient(circle at 80% 70%, var(--secondary-glow) 0%, transparent 25%),
+    radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 25%);
+  opacity: 0.5;
+  animation: backgroundPulse 10s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.app-header h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: 2rem;
+@keyframes backgroundPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
 }
 
-.subtitle {
-  margin: 0;
-  opacity: 0.85;
-  font-size: 1.1rem;
+/* Grid pattern overlay */
+.app::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 50px 50px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .app-main {
-  display: grid;
-  gap: 1.5rem;
+  flex: 1;
+  padding: 2rem;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  animation: fadeIn 0.6s ease-out;
 }
 
-.status-card {
-  padding: 1.5rem;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  background: #fafafa;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.status-card h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.25rem;
-  color: #1a472a;
-}
-
-.status-card p {
-  margin: 0;
-  color: #555;
+@media (max-width: 768px) {
+  .app-main {
+    padding: 1rem;
+  }
 }

@@ -1,0 +1,127 @@
+.system {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.system h1 {
+  margin-bottom: 2.5rem;
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), var(--secondary), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -1px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.status-card {
+  background: rgba(26, 26, 46, 0.6);
+  backdrop-filter: blur(20px);
+  padding: 2.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--text-dim);
+  transition: var(--transition-bounce);
+  position: relative;
+  overflow: hidden;
+}
+
+.status-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, currentColor 0%, transparent 70%);
+  opacity: 0.05;
+}
+
+.status-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: var(--shadow-xl);
+}
+
+.status-card.up {
+  border-left-color: var(--success);
+  color: var(--success);
+}
+
+.status-card.up:hover {
+  box-shadow: var(--shadow-xl), 0 0 30px rgba(0, 245, 160, 0.3);
+}
+
+.status-card.down {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-card.down:hover {
+  box-shadow: var(--shadow-xl), 0 0 30px rgba(255, 0, 110, 0.3);
+}
+
+.status-card.unknown {
+  border-left-color: var(--warning);
+  color: var(--warning);
+}
+
+.status-card.unknown:hover {
+  box-shadow: var(--shadow-xl), 0 0 30px rgba(255, 214, 10, 0.3);
+}
+
+.status-card h3 {
+  margin: 0 0 1.25rem 0;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.status-card .status {
+  font-size: 2rem;
+  font-weight: 900;
+  margin: 1.25rem 0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  animation: statusPulse 2s ease-in-out infinite;
+  text-shadow: 0 0 20px currentColor;
+}
+
+@keyframes statusPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+.status-card .url {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-family: 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  margin-top: 1.5rem;
+  word-break: break-all;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
