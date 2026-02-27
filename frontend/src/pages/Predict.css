@@ -218,12 +218,18 @@
   text-shadow: var(--glow-sm);
 }
 
-.demo-note {
-  color: var(--warning);
-  font-style: italic;
+.error-section {
   margin-top: 2rem;
-  background: rgba(255, 214, 10, 0.1);
-  padding: 1.25rem;
+  animation: slideUpGlow 0.4s ease-out;
+}
+
+.error-message {
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.4);
+  border-left: 4px solid #ff4757;
+  color: #ff6b81;
+  padding: 1.25rem 1.5rem;
   border-radius: var(--radius);
-  border-left: 4px solid var(--warning);
+  font-size: 1rem;
+  margin: 0;
 }

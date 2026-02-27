@@ -6,6 +6,7 @@ function Predict() {
   const [preview, setPreview] = useState<string>('');
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -13,6 +14,7 @@ function Predict() {
       setSelectedFile(file);
       setPreview(URL.createObjectURL(file));
       setResult(null);
+      setError('');
     }
   };
 
@@ -21,15 +23,30 @@ function Predict() {
     if (!selectedFile) return;
 
     setLoading(true);
-    // Placeholder - ML service not implemented yet
-    setTimeout(() => {
-      setResult({
-        species: 'Lion',
-        confidence: 0.95,
-        message: 'ML service not connected yet. This is a demo result.'
+    setError('');
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', selectedFile);
+
+      const response = await fetch('http://localhost:8080/api/predictions/upload', {
+        method: 'POST',
+        body: formData,
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Prediction failed');
+      }
+
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect to backend. Make sure the backend and ML service are running.');
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -44,7 +61,7 @@ function Predict() {
           <input
             id="image-upload"
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/jpg,image/png"
             onChange={handleFileChange}
           />
         </div>
@@ -64,13 +81,20 @@ function Predict() {
         </button>
       </form>
 
+      {error && (
+        <div className="error-section">
+          <p className="error-message">{error}</p>
+        </div>
+      )}
+
       {result && (
         <div className="result-section">
           <h2>Prediction Result</h2>
           <div className="result-card">
-            <p><strong>Species:</strong> {result.species}</p>
-            <p><strong>Confidence:</strong> {(result.confidence * 100).toFixed(1)}%</p>
-            <p className="demo-note">{result.message}</p>
+            <p><strong>Species:</strong> {result.predictedSpecies?.name || result.predictedSpecies?.commonName}</p>
+            <p><strong>Confidence:</strong> {((result.confidence || 0) * 100).toFixed(1)}%</p>
+            <p><strong>Model Version:</strong> {result.modelVersion}</p>
+            <p><strong>Image:</strong> {result.imageName}</p>
           </div>
         </div>
       )}

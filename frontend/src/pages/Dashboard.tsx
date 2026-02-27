@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import './Dashboard.css';
 
 interface Stats {
@@ -63,12 +64,28 @@ function Dashboard() {
 
       <div className="info-section">
         <h2>Welcome to Wildlife MLOps Platform</h2>
-        <p>Use the navigation above to:</p>
+        <p>Navigate to:</p>
         <ul>
-          <li><strong>Predict:</strong> Upload wildlife images for classification</li>
-          <li><strong>Predictions:</strong> View all prediction history</li>
-          <li><strong>Species:</strong> Manage species database</li>
-          <li><strong>System:</strong> Monitor system health</li>
+          <Link to="/predict" className="nav-item">
+            <li>
+              <strong>Predict</strong> - Upload wildlife images for classification
+            </li>
+          </Link>
+          <Link to="/predictions" className="nav-item">
+            <li>
+              <strong>Predictions</strong> - View all prediction history
+            </li>
+          </Link>
+          <Link to="/species" className="nav-item">
+            <li>
+              <strong>Species</strong> - Manage species database
+            </li>
+          </Link>
+          <Link to="/system" className="nav-item">
+            <li>
+              <strong>System</strong> - Monitor system health
+            </li>
+          </Link>
         </ul>
       </div>
     </div>

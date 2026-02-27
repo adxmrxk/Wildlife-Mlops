@@ -29,6 +29,8 @@ ml-pipeline/venv/
 ml-pipeline/mlruns/
 ml-pipeline/data/raw/*
 ml-pipeline/data/processed/*
+ml-pipeline/data/train/*
+ml-pipeline/data/val/*
 ml-pipeline/models/*
 !ml-pipeline/data/raw/.gitkeep
 !ml-pipeline/data/processed/.gitkeep
