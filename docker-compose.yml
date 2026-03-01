@@ -1,29 +1,67 @@
 version: '3.8'
 
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "5173:5173"
-    depends_on:
-      - backend
 
+  # ─── PostgreSQL Database ───────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: wildlife-postgres
+    environment:
+      POSTGRES_DB: wildlife_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: aikido
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wildlife_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Spring Boot Backend ───────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: wildlife-backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=dev
+      SPRING_PROFILES_ACTIVE: docker
+      ML_SERVICE_URL: http://ml-service:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
 
-  # ml-pipeline:
-  #   build:
-  #     context: ./ml-pipeline
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     - backend
+  # ─── FastAPI ML Service ────────────────────────────────────────────────────
+  ml-service:
+    build:
+      context: ./ml-pipeline
+      dockerfile: Dockerfile
+    container_name: wildlife-ml-service
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_PATH: models/wildlife_model_resnet50.pt
+      SPECIES_MAPPING_PATH: data/species_mapping.json
+      MODEL_VERSION: resnet50_v1
+      CONFIDENCE_THRESHOLD: "0.5"
+
+  # ─── React Frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wildlife-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:   # persists database across restarts
+  uploads:         # persists uploaded images across restarts

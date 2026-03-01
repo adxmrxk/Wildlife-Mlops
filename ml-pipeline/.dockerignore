@@ -1,0 +1,14 @@
+__pycache__
+**/__pycache__
+*.pyc
+.venv
+venv
+mlruns
+mlflow.db
+data/train
+data/val
+data/raw
+data/processed
+data/metrics
+models/checkpoints
+*.log
