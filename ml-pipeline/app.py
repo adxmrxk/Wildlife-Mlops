@@ -9,8 +9,30 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Histogram, Gauge
 from src.inference.predictor import Predictor
 from src.training.trainer import WildlifeModel
+
+# Prometheus metrics
+PREDICTIONS_TOTAL = Counter(
+    'wildlife_predictions_total',
+    'Total wildlife predictions made',
+    ['species', 'is_confident']
+)
+PREDICTION_CONFIDENCE = Histogram(
+    'wildlife_prediction_confidence_score',
+    'Distribution of prediction confidence scores',
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+)
+MODEL_LOADED_GAUGE = Gauge(
+    'wildlife_model_loaded',
+    'Whether the ML model is loaded (1=yes, 0=no)'
+)
+LOW_CONFIDENCE_TOTAL = Counter(
+    'wildlife_low_confidence_predictions_total',
+    'Predictions below confidence threshold (model drift indicator)'
+)
 
 
 # Configuration from environment variables
@@ -59,6 +81,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Set up Prometheus instrumentation — exposes /metrics endpoint
+Instrumentator().instrument(app).expose(app)
+
 # Global predictor instance
 predictor: Optional[Predictor] = None
 start_time = time.time()
@@ -69,6 +94,7 @@ async def load_model():
     """Load the model on application startup."""
     global predictor
 
+    MODEL_LOADED_GAUGE.set(0)
     try:
         # Load species mapping
         print(f"Loading species mapping from: {SPECIES_MAPPING_PATH}")
@@ -90,6 +116,7 @@ async def load_model():
 
         # Load model weights
         predictor.load_model(WildlifeModel)
+        MODEL_LOADED_GAUGE.set(1)
         print(f"✓ Model loaded successfully")
         print(f"✓ Model version: {MODEL_VERSION}")
         print(f"✓ Confidence threshold: {CONFIDENCE_THRESHOLD}")
@@ -153,6 +180,15 @@ async def predict(image: UploadFile = File(...)):
         # Run prediction
         result = predictor.predict_single(temp_file_path)
 
+        # Record Prometheus metrics
+        PREDICTIONS_TOTAL.labels(
+            species=result['predicted_species'],
+            is_confident=str(result['is_confident'])
+        ).inc()
+        PREDICTION_CONFIDENCE.observe(result['confidence'])
+        if not result['is_confident']:
+            LOW_CONFIDENCE_TOTAL.inc()
+
         # Add model version to response
         response = {
             "predicted_species": result['predicted_species'],
@@ -189,6 +225,36 @@ async def predict(image: UploadFile = File(...)):
                 os.unlink(temp_file_path)
             except:
                 pass
+
+
+@app.post("/reload")
+async def reload_model_endpoint():
+    """Hot-reload the ML model from disk without restarting the service."""
+    global predictor
+
+    try:
+        MODEL_LOADED_GAUGE.set(0)
+
+        with open(SPECIES_MAPPING_PATH, 'r') as f:
+            species_mapping_raw = json.load(f)
+        species_mapping = {int(k): v for k, v in species_mapping_raw.items()}
+
+        new_predictor = Predictor(
+            model_path=MODEL_PATH,
+            species_mapping=species_mapping,
+            device='cpu',
+            confidence_threshold=CONFIDENCE_THRESHOLD
+        )
+        new_predictor.load_model(WildlifeModel)
+
+        predictor = new_predictor
+        MODEL_LOADED_GAUGE.set(1)
+        print(f"✓ Model hot-reloaded successfully")
+
+        return {"status": "reloaded", "model_version": MODEL_VERSION, "timestamp": time.time()}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Model reload failed: {str(e)}")
 
 
 @app.get("/")

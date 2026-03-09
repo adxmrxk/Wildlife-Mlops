@@ -21,7 +21,9 @@ RUN pip install --no-cache-dir \
     Pillow==10.2.0 \
     numpy==1.26.4 \
     tqdm \
-    mlflow
+    mlflow \
+    prometheus-client \
+    prometheus-fastapi-instrumentator
 
 # Copy application code
 COPY app.py .

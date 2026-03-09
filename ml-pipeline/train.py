@@ -9,7 +9,10 @@ This script demonstrates the complete ML pipeline:
 """
 
 import argparse
+import os
 import torch
+import mlflow
+import mlflow.pytorch
 from pathlib import Path
 from src.data import DataLoader
 from src.training import WildlifeModel, Trainer
@@ -27,9 +30,15 @@ def main(args):
     print("Wildlife MLOps Platform - Model Training")
     print("=" * 60)
 
+    # MLflow setup
+    mlflow_uri = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5001')
+    mlflow.set_tracking_uri(mlflow_uri)
+    mlflow.set_experiment('wildlife-classification')
+    print(f"\nMLflow tracking: {mlflow_uri}")
+
     # Device setup
     device = 'cuda' if torch.cuda.is_available() and not args.cpu else 'cpu'
-    print(f"\nUsing device: {device}")
+    print(f"Using device: {device}")
 
     # Create species mapping
     species_list = args.species.split(',')
@@ -105,6 +114,48 @@ def main(args):
     monitor.record_metrics(final_metrics, model_version=args.model)
     print(f"\n✓ Metrics recorded")
 
+    # Log everything to MLflow
+    with mlflow.start_run(run_name=f"{args.model}_e{args.epochs}"):
+        # Log hyperparameters
+        mlflow.log_params({
+            'model': args.model,
+            'epochs': args.epochs,
+            'batch_size': args.batch_size,
+            'learning_rate': args.learning_rate,
+            'weight_decay': args.weight_decay,
+            'freeze_backbone': args.freeze_backbone,
+            'unfreeze_at_epoch': args.unfreeze_at,
+            'num_species': len(species_mapping),
+        })
+
+        # Log per-epoch metrics
+        for epoch, (tl, ta, vl, va) in enumerate(zip(
+            history['train_loss'], history['train_acc'],
+            history['val_loss'], history['val_acc']
+        )):
+            mlflow.log_metrics({
+                'train_loss': tl,
+                'train_acc': ta,
+                'val_loss': vl,
+                'val_acc': va,
+            }, step=epoch)
+
+        # Log final summary metrics
+        mlflow.log_metrics({
+            'best_val_acc': max(history['val_acc']),
+            'final_val_acc': history['val_acc'][-1],
+            'final_val_loss': history['val_loss'][-1],
+        })
+
+        # Log model file as artifact
+        mlflow.log_artifact(model_path)
+
+        # Register model in MLflow Model Registry
+        run_id = mlflow.active_run().info.run_id
+        model_uri = f"runs:/{run_id}/{model_path}"
+        mlflow.register_model(model_uri, "wildlife-classifier")
+        print(f"✓ Model registered in MLflow (run: {run_id})")
+
     # Print final summary
     print("\n" + "=" * 60)
     print("Training Summary")
@@ -114,6 +165,7 @@ def main(args):
     print(f"Best Validation Accuracy: {max(history['val_acc']):.2f}%")
     print(f"Final Training Loss: {history['train_loss'][-1]:.4f}")
     print(f"Final Validation Loss: {history['val_loss'][-1]:.4f}")
+    print(f"\nView experiments at: {mlflow_uri}")
 
 
 if __name__ == '__main__':
@@ -158,7 +210,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--unfreeze-at',
         type=int,
-        default=10,
+        default=5,
         help='Epoch at which to unfreeze backbone'
     )
 
@@ -166,7 +218,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--epochs',
         type=int,
-        default=30,
+        default=50,
         help='Number of training epochs'
     )
     parser.add_argument(

@@ -6,7 +6,7 @@ from typing import Tuple, Dict, List
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 from tqdm import tqdm
 import mlflow
@@ -93,12 +93,7 @@ class Trainer:
             lr=learning_rate,
             weight_decay=weight_decay
         )
-        self.scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=3
-        )
+        self.scheduler = None  # initialized in fit() once we know total epochs
         self.history = {
             'train_loss': [],
             'train_acc': [],
@@ -131,6 +126,7 @@ class Trainer:
             loss = self.criterion(outputs, labels)
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
 
             total_loss += loss.item()
@@ -206,9 +202,12 @@ class Trainer:
             self.model.freeze_backbone()
             print("Backbone frozen - fine-tuning head layers only")
 
+        # Initialize cosine scheduler now that we know total epochs
+        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=epochs, eta_min=1e-6)
+
         best_val_loss = float('inf')
         patience_counter = 0
-        max_patience = 5
+        max_patience = 7
 
         mlflow.start_run()
         mlflow.log_param('epochs', epochs)
@@ -241,7 +240,7 @@ class Trainer:
             mlflow.log_metric('val_loss', val_loss, step=epoch)
             mlflow.log_metric('val_acc', val_acc, step=epoch)
 
-            self.scheduler.step(val_loss)
+            self.scheduler.step()
 
             # Early stopping
             if val_loss < best_val_loss:
