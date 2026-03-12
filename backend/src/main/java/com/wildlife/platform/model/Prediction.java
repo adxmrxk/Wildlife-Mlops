@@ -40,6 +40,9 @@ public class Prediction {
     @Column(name = "model_version")
     private String modelVersion;
 
+    @Column(name = "correct_species")
+    private String correctSpecies;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

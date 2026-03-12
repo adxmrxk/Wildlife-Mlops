@@ -1,0 +1,200 @@
+.predictions-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.predictions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.predictions-header h1 {
+  margin-bottom: 0;
+}
+
+.clear-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.clear-confirm-text {
+  color: #ff6b81;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.clear-btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid rgba(255, 71, 87, 0.4);
+  background: rgba(255, 71, 87, 0.08);
+  color: #ff6b81;
+}
+
+.clear-btn:hover {
+  background: rgba(255, 71, 87, 0.18);
+  border-color: #ff4757;
+}
+
+.clear-btn.confirm {
+  background: rgba(255, 71, 87, 0.2);
+  border-color: #ff4757;
+  color: #ff4757;
+}
+
+.clear-btn.cancel {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+}
+
+.predictions-page h1 {
+  margin-bottom: 2rem;
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: center;
+  letter-spacing: -1px;
+}
+
+.predictions-status {
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 1.1rem;
+  margin-top: 4rem;
+}
+
+.predictions-table-wrapper {
+  background: rgba(26, 26, 46, 0.6);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-xl);
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.predictions-table-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
+
+.predictions-table-wrapper::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+
+.predictions-table-wrapper::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--primary), var(--secondary));
+  border-radius: 4px;
+}
+
+.predictions-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--primary-dark), var(--secondary-dark));
+}
+
+.predictions-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.predictions-table thead tr {
+  background: rgba(26, 26, 46, 0.95);
+  border-bottom: 1px solid rgba(58, 143, 92, 0.3);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.predictions-table th {
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--primary);
+}
+
+.predictions-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s;
+}
+
+.predictions-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.predictions-table td {
+  padding: 1rem 1.25rem;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.species-cell {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.confidence-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.confidence-badge.high {
+  background: rgba(0, 245, 160, 0.15);
+  color: #00f5a0;
+  border: 1px solid rgba(0, 245, 160, 0.3);
+}
+
+.confidence-badge.mid {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.confidence-badge.low {
+  background: rgba(255, 71, 87, 0.15);
+  color: #ff6b81;
+  border: 1px solid rgba(255, 71, 87, 0.3);
+}
+
+.feedback-correct {
+  color: #00f5a0;
+  font-size: 0.9rem;
+}
+
+.feedback-wrong {
+  color: #ff6b81;
+  font-size: 0.9rem;
+  text-transform: capitalize;
+}
+
+.feedback-none {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.muted {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 0.85rem !important;
+}

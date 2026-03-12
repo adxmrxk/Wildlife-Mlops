@@ -31,8 +31,19 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       ML_SERVICE_URL: http://ml-service:8000
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_BUCKET: wildlife-uploads
+      STORAGE_S3_ACCESS_KEY: minioadmin
+      STORAGE_S3_SECRET_KEY: minioadmin123
+      STORAGE_S3_REGION: us-east-1
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - uploads:/app/uploads
@@ -84,6 +95,41 @@ services:
       - ./ml-pipeline/models:/app/models
       - ./ml-pipeline/data:/app/data
 
+  # ─── MinIO (S3-compatible Object Storage) ─────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: wildlife-minio
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console (web UI)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ─── MinIO bucket initializer ──────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: wildlife-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+        mc mb --ignore-existing local/wildlife-uploads &&
+        mc mb --ignore-existing local/wildlife-mlflow &&
+        mc anonymous set download local/wildlife-uploads &&
+        echo 'Buckets created successfully'
+      "
+
   # ─── MLflow Tracking Server ────────────────────────────────────────────────
   mlflow:
     build:
@@ -92,8 +138,30 @@ services:
     container_name: wildlife-mlflow
     ports:
       - "5001:5001"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+    depends_on:
+      minio:
+        condition: service_healthy
     volumes:
       - mlflow_data:/mlflow
+
+  # ─── Redis (in-memory cache) ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: wildlife-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ─── Prometheus ────────────────────────────────────────────────────────────
   prometheus:
@@ -130,3 +198,5 @@ volumes:
   uploads:         # persists uploaded images across restarts
   grafana_data:    # persists grafana settings across restarts
   mlflow_data:     # persists mlflow experiments and models across restarts
+  minio_data:      # persists uploaded images and ML artifacts in S3-compatible storage
+  redis_data:      # persists Redis cache across restarts

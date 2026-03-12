@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import './Predict.css';
 
+const SPECIES = ['butterfly', 'cat', 'chicken', 'cow', 'dog', 'elephant', 'horse', 'sheep', 'spider', 'squirrel'];
+
 function Predict() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>('');
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [feedbackState, setFeedbackState] = useState<'idle' | 'wrong' | 'submitted'>('idle');
+  const [correctSpecies, setCorrectSpecies] = useState<string>('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,6 +46,8 @@ function Predict() {
       }
 
       setResult(data);
+      setFeedbackState('idle');
+      setCorrectSpecies('');
     } catch (err: any) {
       setError(err.message || 'Failed to connect to backend. Make sure the backend and ML service are running.');
     } finally {
@@ -95,6 +101,70 @@ function Predict() {
             <p><strong>Confidence:</strong> {((result.confidence || 0) * 100).toFixed(1)}%</p>
             <p><strong>Model Version:</strong> {result.modelVersion}</p>
             <p><strong>Image:</strong> {result.imageName}</p>
+          </div>
+
+          <div className="feedback-section">
+            {feedbackState === 'idle' && (
+              <>
+                <p className="feedback-question">Was this correct?</p>
+                <div className="feedback-buttons">
+                  <button className="feedback-btn yes" onClick={async () => {
+                    await fetch(`http://localhost:8080/api/predictions/${result.id}/feedback`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ correctSpecies: result.predictedSpecies?.name || result.predictedSpecies?.commonName }),
+                    });
+                    setFeedbackState('submitted');
+                  }}>
+                    Yes
+                  </button>
+                  <button className="feedback-btn no" onClick={() => setFeedbackState('wrong')}>
+                    No
+                  </button>
+                </div>
+              </>
+            )}
+
+            {feedbackState === 'wrong' && (
+              <div className="feedback-correction">
+                <p className="feedback-question">What was the correct species?</p>
+                <div className="species-grid">
+                  {SPECIES.map(s => (
+                    <button
+                      key={s}
+                      className={`species-chip ${correctSpecies === s ? 'selected' : ''}`}
+                      onClick={() => setCorrectSpecies(s)}
+                    >
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
+                  <button
+                    className={`species-chip other ${correctSpecies === 'other' ? 'selected' : ''}`}
+                    onClick={() => setCorrectSpecies('other')}
+                  >
+                    Other
+                  </button>
+                </div>
+                <button
+                  className="feedback-btn submit"
+                  disabled={!correctSpecies}
+                  onClick={async () => {
+                    await fetch(`http://localhost:8080/api/predictions/${result.id}/feedback`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ correctSpecies }),
+                    });
+                    setFeedbackState('submitted');
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            )}
+
+            {feedbackState === 'submitted' && (
+              <p className="feedback-thanks">Thanks for the feedback!</p>
+            )}
           </div>
         </div>
       )}

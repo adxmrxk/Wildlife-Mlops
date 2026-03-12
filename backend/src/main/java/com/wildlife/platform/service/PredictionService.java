@@ -3,6 +3,8 @@ package com.wildlife.platform.service;
 import com.wildlife.platform.model.Prediction;
 import com.wildlife.platform.repository.PredictionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,24 +37,44 @@ public class PredictionService {
         return predictionRepository.findByModelVersion(modelVersion);
     }
 
-    // Save a prediction
+    // Save a prediction — evict stats cache so dashboard shows fresh numbers
     @Transactional
+    @CacheEvict(value = "predictionStats", allEntries = true)
     public Prediction savePrediction(Prediction prediction) {
         return predictionRepository.save(prediction);
     }
 
-    // Delete a prediction
+    // Delete a prediction — evict stats cache
     @Transactional
+    @CacheEvict(value = "predictionStats", allEntries = true)
     public void deletePrediction(Long id) {
         predictionRepository.deleteById(id);
     }
 
-    // Count total predictions
+    // Save correct species feedback on a prediction
+    @Transactional
+    public Optional<Prediction> saveFeedback(Long id, String correctSpecies) {
+        return predictionRepository.findById(id).map(prediction -> {
+            prediction.setCorrectSpecies(correctSpecies);
+            return predictionRepository.save(prediction);
+        });
+    }
+
+    // Delete all predictions — evict stats cache
+    @Transactional
+    @CacheEvict(value = "predictionStats", allEntries = true)
+    public void deleteAllPredictions() {
+        predictionRepository.deleteAll();
+    }
+
+    // Count total predictions — cached for 1 minute
+    @Cacheable("predictionStats")
     public long countPredictions() {
         return predictionRepository.count();
     }
 
-    // Calculate average confidence across all predictions
+    // Calculate average confidence — cached alongside count in predictionStats
+    @Cacheable(value = "predictionStats", key = "'avgConfidence'")
     public Double getAverageConfidence() {
         List<Prediction> predictions = predictionRepository.findAll();
         if (predictions.isEmpty()) {

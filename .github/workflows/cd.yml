@@ -1,0 +1,176 @@
+name: CD — Build & Deploy to AWS
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:  # allow manual trigger
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: wildlife-mlops-cluster
+
+jobs:
+  # ─── Build & Push Docker images to ECR ──────────────────────────────────────
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      ml-image:      ${{ steps.build-ml.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Backend ──────────────────────────────────────────────────────────────
+      - name: Build & push backend
+        id: build-backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/wildlife-mlops/backend:$IMAGE_TAG ./backend
+          docker push $ECR_REGISTRY/wildlife-mlops/backend:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/wildlife-mlops/backend:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # ── ML Service ───────────────────────────────────────────────────────────
+      - name: Build & push ML service
+        id: build-ml
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/wildlife-mlops/ml-service:$IMAGE_TAG ./ml-pipeline
+          docker push $ECR_REGISTRY/wildlife-mlops/ml-service:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/wildlife-mlops/ml-service:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # ── Frontend ─────────────────────────────────────────────────────────────
+      - name: Build & push frontend
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/wildlife-mlops/frontend:$IMAGE_TAG ./frontend
+          docker push $ECR_REGISTRY/wildlife-mlops/frontend:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/wildlife-mlops/frontend:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ─── Deploy Backend to ECS ───────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy backend to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition wildlife-mlops-backend \
+            --query taskDefinition > task-def.json
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name:  backend
+          image:           ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          wildlife-mlops-backend
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ─── Deploy ML Service to ECS ────────────────────────────────────────────────
+  deploy-ml-service:
+    name: Deploy ML service to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition wildlife-mlops-ml-service \
+            --query taskDefinition > task-def.json
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name:  ml-service
+          image:           ${{ needs.build-and-push.outputs.ml-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          wildlife-mlops-ml-service
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ─── Deploy Frontend to ECS ──────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy frontend to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition wildlife-mlops-frontend \
+            --query taskDefinition > task-def.json
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name:  frontend
+          image:           ${{ needs.build-and-push.outputs.frontend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          wildlife-mlops-frontend
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

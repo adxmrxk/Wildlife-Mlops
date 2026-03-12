@@ -218,6 +218,121 @@
   text-shadow: var(--glow-sm);
 }
 
+.feedback-section {
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.feedback-question {
+  font-size: 1.2rem;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.feedback-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.feedback-btn {
+  padding: 0.75rem 2.5rem;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-bounce);
+}
+
+.feedback-btn.yes {
+  background: linear-gradient(135deg, var(--success), var(--primary));
+  color: var(--dark);
+}
+
+.feedback-btn.no {
+  background: rgba(255, 71, 87, 0.15);
+  border: 1px solid rgba(255, 71, 87, 0.5);
+  color: #ff6b81;
+}
+
+.feedback-btn.submit {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: var(--dark);
+  margin-top: 1rem;
+}
+
+.feedback-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+}
+
+.feedback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feedback-correction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.species-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  max-width: 480px;
+  margin: 0 auto 0.5rem;
+}
+
+.species-chip {
+  padding: 0.5rem 1.1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  text-transform: capitalize;
+}
+
+.species-chip:hover {
+  background: rgba(58, 143, 92, 0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.species-chip.selected {
+  background: rgba(58, 143, 92, 0.2);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 12px var(--primary-glow);
+}
+
+.species-chip.other {
+  border-style: dashed;
+  color: var(--text-secondary, #a0a0b0);
+}
+
+.species-chip.other.selected {
+  background: rgba(201, 160, 90, 0.15);
+  border-color: var(--secondary);
+  color: var(--secondary);
+  box-shadow: 0 0 12px var(--secondary-glow);
+  border-style: solid;
+}
+
+.feedback-thanks {
+  font-size: 1.1rem;
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .error-section {
   margin-top: 2rem;
   animation: slideUpGlow 0.4s ease-out;
