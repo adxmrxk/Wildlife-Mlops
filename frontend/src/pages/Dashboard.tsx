@@ -15,29 +15,28 @@ function Dashboard() {
     avgConfidence: 0
   });
 
-  const fetchStats = async () => {
-    try {
-      const [speciesRes, predictionsRes, statsRes] = await Promise.all([
-        fetch('http://localhost:8080/api/species/count'),
-        fetch('http://localhost:8080/api/predictions'),
-        fetch('http://localhost:8080/api/predictions/stats')
-      ]);
-
-      const speciesCount = await speciesRes.json();
-      const predictions = await predictionsRes.json();
-      const predStats = await statsRes.json();
-
-      setStats({
-        totalSpecies: speciesCount,
-        totalPredictions: predictions.length,
-        avgConfidence: predStats.averageConfidence || 0
-      });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
-
   useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [speciesRes, predictionsRes, statsRes] = await Promise.all([
+          fetch('http://localhost:8080/api/species/count'),
+          fetch('http://localhost:8080/api/predictions'),
+          fetch('http://localhost:8080/api/predictions/stats')
+        ]);
+
+        const speciesCount = await speciesRes.json();
+        const predictions = await predictionsRes.json();
+        const predStats = await statsRes.json();
+
+        setStats({
+          totalSpecies: speciesCount,
+          totalPredictions: predictions.length,
+          avgConfidence: predStats.averageConfidence || 0
+        });
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
     fetchStats();
   }, []);
 

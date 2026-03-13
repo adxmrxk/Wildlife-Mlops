@@ -29,7 +29,16 @@ function SpeciesPage() {
   };
 
   useEffect(() => {
-    fetchSpecies();
+    const load = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/species');
+        const data = await response.json();
+        setSpecies(data);
+      } catch (error) {
+        console.error('Error fetching species:', error);
+      }
+    };
+    load();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
