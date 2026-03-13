@@ -8,41 +8,6 @@ function System() {
   const [redisStatus, setRedisStatus] = useState<string>('CHECKING...');
   const [kafkaStatus, setKafkaStatus] = useState<string>('CHECKING...');
 
-  const checkBackend = async () => {
-    try {
-      const response = await fetch('http://localhost:8080/api/health');
-      if (response.ok) {
-        const data = await response.json();
-        setBackendStatus('UP');
-        setRedisStatus(data.redis || 'DOWN');
-        setKafkaStatus(data.kafka || 'DOWN');
-      } else {
-        setBackendStatus('DOWN');
-        setRedisStatus('DOWN');
-        setKafkaStatus('DOWN');
-      }
-    } catch {
-      setBackendStatus('DOWN');
-      setRedisStatus('DOWN');
-      setKafkaStatus('DOWN');
-    }
-  };
-
-  const checkMLService = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/health');
-      if (response.ok) {
-        const data = await response.json();
-        setMlStatus(data.model_loaded ? 'UP' : 'DOWN');
-        setMlVersion(data.model_version || '');
-      } else {
-        setMlStatus('DOWN');
-      }
-    } catch {
-      setMlStatus('DOWN');
-    }
-  };
-
   useEffect(() => {
     const load = async () => {
       try {
