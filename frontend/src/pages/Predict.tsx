@@ -3,10 +3,19 @@ import './Predict.css';
 
 const SPECIES = ['butterfly', 'cat', 'chicken', 'cow', 'dog', 'elephant', 'horse', 'sheep', 'spider', 'squirrel'];
 
+interface PredictionResult {
+  id: number;
+  imageName: string;
+  confidence: number;
+  modelVersion: string;
+  heatmapBase64?: string;
+  predictedSpecies?: { name?: string; commonName?: string };
+}
+
 function Predict() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>('');
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<PredictionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [feedbackState, setFeedbackState] = useState<'idle' | 'wrong' | 'submitted'>('idle');
@@ -48,8 +57,8 @@ function Predict() {
       setResult(data);
       setFeedbackState('idle');
       setCorrectSpecies('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect to backend. Make sure the backend and ML service are running.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to connect to backend. Make sure the backend and ML service are running.');
     } finally {
       setLoading(false);
     }

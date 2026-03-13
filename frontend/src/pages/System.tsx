@@ -8,11 +8,6 @@ function System() {
   const [redisStatus, setRedisStatus] = useState<string>('CHECKING...');
   const [kafkaStatus, setKafkaStatus] = useState<string>('CHECKING...');
 
-  useEffect(() => {
-    checkBackend();
-    checkMLService();
-  }, []);
-
   const checkBackend = async () => {
     try {
       const response = await fetch('http://localhost:8080/api/health');
@@ -47,6 +42,11 @@ function System() {
       setMlStatus('DOWN');
     }
   };
+
+  useEffect(() => {
+    checkBackend();
+    checkMLService();
+  }, []);
 
   const getCardClass = (status: string) => {
     if (status === 'UP') return 'status-card up';

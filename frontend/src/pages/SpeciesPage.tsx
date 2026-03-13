@@ -18,10 +18,6 @@ function SpeciesPage() {
     active: true
   });
 
-  useEffect(() => {
-    fetchSpecies();
-  }, []);
-
   const fetchSpecies = async () => {
     try {
       const response = await fetch('http://localhost:8080/api/species');
@@ -31,6 +27,10 @@ function SpeciesPage() {
       console.error('Error fetching species:', error);
     }
   };
+
+  useEffect(() => {
+    fetchSpecies();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

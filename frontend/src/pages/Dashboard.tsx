@@ -15,10 +15,6 @@ function Dashboard() {
     avgConfidence: 0
   });
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
   const fetchStats = async () => {
     try {
       const [speciesRes, predictionsRes, statsRes] = await Promise.all([
@@ -40,6 +36,10 @@ function Dashboard() {
       console.error('Error fetching stats:', error);
     }
   };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   return (
     <div className="dashboard">
