@@ -4,9 +4,12 @@ import os
 import json
 import tempfile
 import time
+import threading
+import subprocess
+import uuid
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -55,6 +58,11 @@ class PredictionResponse(BaseModel):
     top_predictions: list[TopPrediction]
     model_version: str
     timestamp: str
+    heatmap_base64: Optional[str] = None
+
+
+# ─── Training job tracker ──────────────────────────────────────────────────
+training_jobs: dict = {}  # job_id -> { status, started_at, completed_at, error }
 
 
 class HealthResponse(BaseModel):
@@ -143,7 +151,7 @@ async def health_check():
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(image: UploadFile = File(...)):
+async def predict(image: UploadFile = File(...), gradcam: bool = Query(default=False)):
     """
     Predict wildlife species from uploaded image.
 
@@ -189,14 +197,25 @@ async def predict(image: UploadFile = File(...)):
         if not result['is_confident']:
             LOW_CONFIDENCE_TOTAL.inc()
 
-        # Add model version to response
+        # Optionally generate GradCAM heatmap
+        heatmap_b64 = None
+        if gradcam:
+            try:
+                predicted_idx = list(predictor.species_mapping.keys())[
+                    list(predictor.species_mapping.values()).index(result['predicted_species'])
+                ]
+                heatmap_b64 = predictor.generate_gradcam(temp_file_path, predicted_idx)
+            except Exception as e:
+                print(f"GradCAM failed (non-fatal): {e}")
+
         response = {
             "predicted_species": result['predicted_species'],
             "confidence": result['confidence'],
             "is_confident": result['is_confident'],
             "top_predictions": result['top_predictions'],
             "model_version": MODEL_VERSION,
-            "timestamp": result['timestamp']
+            "timestamp": result['timestamp'],
+            "heatmap_base64": heatmap_b64
         }
 
         return response
@@ -255,6 +274,89 @@ async def reload_model_endpoint():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Model reload failed: {str(e)}")
+
+
+@app.post("/train")
+async def trigger_training(epochs: int = 10):
+    """
+    Kick off model retraining in a background thread.
+    Returns a job_id — poll /train/status/{job_id} for completion.
+    """
+    job_id = str(uuid.uuid4())[:8]
+    training_jobs[job_id] = {"status": "RUNNING", "started_at": time.time()}
+
+    def run():
+        try:
+            result = subprocess.run(
+                ["python", "train.py", "--epochs", str(epochs), "--cpu"],
+                capture_output=True, text=True, timeout=7200,
+                env={**os.environ, "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5001")}
+            )
+            if result.returncode == 0:
+                training_jobs[job_id]["status"] = "SUCCESS"
+            else:
+                training_jobs[job_id]["status"] = "FAILED"
+                training_jobs[job_id]["error"] = result.stderr[-500:]
+        except Exception as e:
+            training_jobs[job_id]["status"] = "FAILED"
+            training_jobs[job_id]["error"] = str(e)
+        training_jobs[job_id]["completed_at"] = time.time()
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id, "status": "RUNNING"}
+
+
+@app.get("/train/status/{job_id}")
+async def training_status(job_id: str):
+    """Check the status of a training job."""
+    if job_id not in training_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return training_jobs[job_id]
+
+
+@app.get("/evaluate")
+async def evaluate_model():
+    """
+    Compare the latest trained model vs the previous one using MLflow metrics.
+    Returns whether the new model should be promoted.
+    """
+    try:
+        import mlflow
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5001"))
+        client = mlflow.tracking.MlflowClient()
+
+        experiment = client.get_experiment_by_name("wildlife-classification")
+        if not experiment:
+            return {"can_promote": True, "reason": "no_previous_experiments"}
+
+        runs = client.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            order_by=["start_time DESC"],
+            max_results=2
+        )
+
+        if len(runs) < 2:
+            return {"can_promote": True, "reason": "first_training_run", "latest_accuracy": runs[0].data.metrics.get("best_val_acc", 0) if runs else 0}
+
+        latest_acc = runs[0].data.metrics.get("best_val_acc", 0)
+        previous_acc = runs[1].data.metrics.get("best_val_acc", 0)
+        improvement = latest_acc - previous_acc
+
+        return {
+            "can_promote": latest_acc > previous_acc,
+            "latest_accuracy": round(latest_acc, 4),
+            "previous_accuracy": round(previous_acc, 4),
+            "improvement": round(improvement, 4),
+            "reason": "accuracy_improved" if latest_acc > previous_acc else "accuracy_did_not_improve"
+        }
+    except Exception as e:
+        return {"error": str(e), "can_promote": False}
+
+
+@app.post("/promote")
+async def promote_model():
+    """Promote the latest trained model to production by hot-reloading it."""
+    return await reload_model_endpoint()
 
 
 @app.get("/")

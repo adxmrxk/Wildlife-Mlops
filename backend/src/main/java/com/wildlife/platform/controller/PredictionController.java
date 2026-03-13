@@ -1,6 +1,7 @@
 package com.wildlife.platform.controller;
 
 import com.wildlife.platform.dto.MLPredictionResponse;
+import com.wildlife.platform.messaging.PredictionEventProducer;
 import com.wildlife.platform.model.Prediction;
 import com.wildlife.platform.model.Species;
 import com.wildlife.platform.service.FileStorageService;
@@ -14,7 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -31,6 +31,7 @@ public class PredictionController {
     private final MLPredictionService mlPredictionService;
     private final FileStorageService fileStorageService;
     private final S3StorageService s3StorageService;
+    private final PredictionEventProducer eventProducer;
 
     // GET /api/predictions - Get all predictions
     @GetMapping
@@ -101,7 +102,13 @@ public class PredictionController {
             // 7. Save to database
             Prediction savedPrediction = predictionService.savePrediction(prediction);
 
-            // 8. Return response
+            // 8. Attach GradCAM heatmap (transient — not stored in DB)
+            savedPrediction.setHeatmapBase64(mlResponse.getHeatmap_base64());
+
+            // 9. Publish prediction event to Kafka
+            eventProducer.publishPredictionEvent(savedPrediction);
+
+            // 10. Return response
             return ResponseEntity.status(HttpStatus.CREATED).body(savedPrediction);
 
         } catch (IllegalArgumentException e) {
@@ -149,7 +156,12 @@ public class PredictionController {
             return ResponseEntity.badRequest().body(Map.of("error", "correctSpecies is required"));
         }
         return predictionService.saveFeedback(id, correctSpecies)
-                .map(ResponseEntity::ok)
+                .map(saved -> {
+                    boolean correct = saved.getPredictedSpecies() != null &&
+                        saved.getPredictedSpecies().getName().equalsIgnoreCase(correctSpecies);
+                    eventProducer.publishFeedbackEvent(id, correct, correctSpecies);
+                    return ResponseEntity.ok(saved);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 

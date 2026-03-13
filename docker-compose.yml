@@ -45,6 +45,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     volumes:
       - uploads:/app/uploads
 
@@ -148,6 +150,61 @@ services:
     volumes:
       - mlflow_data:/mlflow
 
+  # ─── Apache Airflow (ML pipeline orchestration) ───────────────────────────
+  airflow:
+    image: apache/airflow:2.9.0
+    container_name: wildlife-airflow
+    command: standalone
+    ports:
+      - "8082:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      ML_SERVICE_URL: http://ml-service:8000
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_data:/opt/airflow
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    depends_on:
+      - ml-service
+      - mlflow
+
+  # ─── Kafka (event streaming) ───────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: wildlife-kafka
+    ports:
+      - "9094:9094"   # external access from host
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   # ─── Redis (in-memory cache) ───────────────────────────────────────────────
   redis:
     image: redis:7-alpine
@@ -199,4 +256,6 @@ volumes:
   grafana_data:    # persists grafana settings across restarts
   mlflow_data:     # persists mlflow experiments and models across restarts
   minio_data:      # persists uploaded images and ML artifacts in S3-compatible storage
+  airflow_data:    # persists Airflow DB, logs, and config across restarts
+  kafka_data:      # persists Kafka topics and messages across restarts
   redis_data:      # persists Redis cache across restarts

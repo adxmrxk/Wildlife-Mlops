@@ -83,6 +83,49 @@ def trigger_retrain():
         return False
 
 
+def evaluate_new_model():
+    """
+    Compare the latest trained model vs the previous one in MLflow.
+    Returns True if the new model is better and should be promoted.
+    """
+    try:
+        import mlflow
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        client = mlflow.tracking.MlflowClient()
+
+        experiment = client.get_experiment_by_name('wildlife-classification')
+        if not experiment:
+            print("  No MLflow experiments found — promoting by default")
+            return True
+
+        runs = client.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            order_by=['start_time DESC'],
+            max_results=2
+        )
+
+        if len(runs) < 2:
+            print("  First training run — promoting by default")
+            return True
+
+        latest_acc   = runs[0].data.metrics.get('best_val_acc', 0)
+        previous_acc = runs[1].data.metrics.get('best_val_acc', 0)
+
+        print(f"  New model accuracy:      {latest_acc:.4f}")
+        print(f"  Previous model accuracy: {previous_acc:.4f}")
+
+        if latest_acc > previous_acc:
+            print(f"  ✓ New model is better (+{latest_acc - previous_acc:.4f}) — promoting")
+            return True
+        else:
+            print(f"  ✗ New model did not improve — keeping current model")
+            return False
+
+    except Exception as e:
+        print(f"  Evaluation error: {e} — promoting by default")
+        return True
+
+
 def reload_ml_service():
     """Tell the ML service to hot-reload the new model."""
     try:
@@ -132,8 +175,13 @@ def main():
                 success = trigger_retrain()
                 if success:
                     last_retrain = datetime.now()
-                    reload_ml_service()
-                    print(f"  ✓ Auto-retrain complete")
+                    print(f"  Evaluating new model vs current...")
+                    should_promote = evaluate_new_model()
+                    if should_promote:
+                        reload_ml_service()
+                        print(f"  ✓ New model promoted and live")
+                    else:
+                        print(f"  ✓ Training done — kept current model (new model wasn't better)")
                 else:
                     print(f"  ✗ Retrain failed — will retry next cycle")
             else:

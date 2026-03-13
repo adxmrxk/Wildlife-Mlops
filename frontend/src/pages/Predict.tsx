@@ -103,6 +103,23 @@ function Predict() {
             <p><strong>Image:</strong> {result.imageName}</p>
           </div>
 
+          {result.heatmapBase64 && (
+            <div className="heatmap-section">
+              <h3 className="heatmap-title">GradCAM — What the model saw</h3>
+              <p className="heatmap-subtitle">Highlighted regions show where the model focused to make its prediction</p>
+              <div className="heatmap-images">
+                <div className="heatmap-image-wrapper">
+                  <span className="heatmap-label">Original</span>
+                  <img src={preview} alt="Original" className="heatmap-img" />
+                </div>
+                <div className="heatmap-image-wrapper">
+                  <span className="heatmap-label">Model Focus</span>
+                  <img src={`data:image/png;base64,${result.heatmapBase64}`} alt="GradCAM heatmap" className="heatmap-img" />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="feedback-section">
             {feedbackState === 'idle' && (
               <>

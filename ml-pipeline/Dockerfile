@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependency for PyTorch (OpenMP for CPU parallelism)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PyTorch CPU-only first (large layer - cached separately for faster rebuilds)
@@ -23,7 +24,10 @@ RUN pip install --no-cache-dir \
     tqdm \
     mlflow \
     prometheus-client \
-    prometheus-fastapi-instrumentator
+    prometheus-fastapi-instrumentator \
+    grad-cam \
+    opencv-python-headless \
+    scipy
 
 # Copy application code
 COPY app.py .

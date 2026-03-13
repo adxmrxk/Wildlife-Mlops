@@ -43,6 +43,10 @@ public class Prediction {
     @Column(name = "correct_species")
     private String correctSpecies;
 
+    /** GradCAM heatmap base64 — returned in upload response, NOT stored in DB */
+    @Transient
+    private String heatmapBase64;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

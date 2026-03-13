@@ -5,6 +5,8 @@ function System() {
   const [backendStatus, setBackendStatus] = useState<string>('CHECKING...');
   const [mlStatus, setMlStatus] = useState<string>('CHECKING...');
   const [mlVersion, setMlVersion] = useState<string>('');
+  const [redisStatus, setRedisStatus] = useState<string>('CHECKING...');
+  const [kafkaStatus, setKafkaStatus] = useState<string>('CHECKING...');
 
   useEffect(() => {
     checkBackend();
@@ -15,12 +17,19 @@ function System() {
     try {
       const response = await fetch('http://localhost:8080/api/health');
       if (response.ok) {
+        const data = await response.json();
         setBackendStatus('UP');
+        setRedisStatus(data.redis || 'DOWN');
+        setKafkaStatus(data.kafka || 'DOWN');
       } else {
         setBackendStatus('DOWN');
+        setRedisStatus('DOWN');
+        setKafkaStatus('DOWN');
       }
     } catch {
       setBackendStatus('DOWN');
+      setRedisStatus('DOWN');
+      setKafkaStatus('DOWN');
     }
   };
 
@@ -68,16 +77,22 @@ function System() {
           <p className="url">PostgreSQL - localhost:5432</p>
         </div>
 
-        <div className="status-card unknown">
+        <div className={getCardClass(kafkaStatus)}>
           <h3>Kafka</h3>
-          <p className="status">NOT CONFIGURED</p>
-          <p className="url">localhost:9092</p>
+          <p className="status">{kafkaStatus}</p>
+          <p className="url">localhost:9094 — event streaming</p>
         </div>
 
         <div className="status-card unknown">
+          <h3>Airflow</h3>
+          <p className="status">UI</p>
+          <p className="url"><a href="http://localhost:8082" target="_blank" rel="noreferrer">localhost:8082 — pipeline DAGs</a></p>
+        </div>
+
+        <div className={getCardClass(redisStatus)}>
           <h3>Redis</h3>
-          <p className="status">NOT CONFIGURED</p>
-          <p className="url">localhost:6379</p>
+          <p className="status">{redisStatus}</p>
+          <p className="url">localhost:6379 — cache layer</p>
         </div>
       </div>
     </div>

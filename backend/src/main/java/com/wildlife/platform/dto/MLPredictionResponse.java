@@ -21,6 +21,7 @@ public class MLPredictionResponse {
     private List<TopPrediction> top_predictions;
     private String model_version;
     private String timestamp;
+    private String heatmap_base64;
 
     /**
      * Inner class for top prediction details.

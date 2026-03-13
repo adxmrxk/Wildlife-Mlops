@@ -1,5 +1,7 @@
 """Wildlife model inference pipeline for making predictions."""
 
+import io
+import base64
 import torch
 import torch.nn.functional as F
 from pathlib import Path
@@ -112,6 +114,42 @@ class Predictor:
             'top_predictions': top_predictions,
             'timestamp': datetime.now().isoformat()
         }
+
+    def generate_gradcam(self, image_path: str, target_class_idx: int = None) -> str:
+        """
+        Generate a GradCAM heatmap showing which parts of the image
+        the model focused on when making its prediction.
+
+        Args:
+            image_path: Path to the image file
+            target_class_idx: Class index to visualise (None = predicted class)
+
+        Returns:
+            Base64-encoded PNG of the heatmap overlaid on the image
+        """
+        from pytorch_grad_cam import GradCAM
+        from pytorch_grad_cam.utils.image import show_cam_on_image
+        from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+
+        image = Image.open(image_path).convert('RGB')
+        img_resized = image.resize((224, 224))
+        img_array = np.array(img_resized).astype(np.float32) / 255.0
+
+        input_tensor = self.transforms(image).unsqueeze(0).to(self.device)
+
+        # ResNet50 backbone — last conv block is the best GradCAM target
+        target_layers = [self.model.backbone.layer4[-1]]
+        targets = [ClassifierOutputTarget(target_class_idx)] if target_class_idx is not None else None
+
+        with GradCAM(model=self.model, target_layers=target_layers) as cam:
+            grayscale_cam = cam(input_tensor=input_tensor, targets=targets)
+
+        visualization = show_cam_on_image(img_array, grayscale_cam[0], use_rgb=True)
+
+        pil_img = Image.fromarray(visualization)
+        buffer = io.BytesIO()
+        pil_img.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
     def predict_batch(
         self,

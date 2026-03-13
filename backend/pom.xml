@@ -107,6 +107,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Kafka — event streaming for prediction and feedback pipeline -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

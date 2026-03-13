@@ -27,10 +27,12 @@ ml-pipeline/*.pyc
 ml-pipeline/.venv/
 ml-pipeline/venv/
 ml-pipeline/mlruns/
+ml-pipeline/mlflow.db
 ml-pipeline/data/raw/*
 ml-pipeline/data/processed/*
 ml-pipeline/data/train/*
 ml-pipeline/data/val/*
+ml-pipeline/data/metrics/
 ml-pipeline/models/*
 !ml-pipeline/data/raw/.gitkeep
 !ml-pipeline/data/processed/.gitkeep
@@ -51,6 +53,15 @@ ml-pipeline/models/*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# =========================
+# Runtime / Logs
+# =========================
+backend/uploads/
+backend/nul
+hs_err_pid*.log
+replay_pid*.log
+tmpclaude-*
 
 # =========================
 # Claude

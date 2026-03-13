@@ -47,7 +47,7 @@ public class MLPredictionService {
      * @throws RuntimeException If ML service call fails
      */
     public MLPredictionResponse predict(File imageFile) {
-        String predictUrl = mlServiceUrl + "/predict";
+        String predictUrl = mlServiceUrl + "/predict?gradcam=true";
 
         try {
             // Prepare multipart request
