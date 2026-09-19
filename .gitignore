@@ -21,6 +21,11 @@ BACKEND_DOCUMENTATION.md
 # =========================
 # Python / ML Pipeline
 # =========================
+# Python bytecode anywhere in the repo (Airflow compiles DAGs in place)
+__pycache__/
+**/__pycache__/
+*.pyc
+
 ml-pipeline/__pycache__/
 ml-pipeline/**/__pycache__/
 ml-pipeline/*.pyc
