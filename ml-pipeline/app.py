@@ -47,28 +47,40 @@ MODEL_VERSION = os.getenv('MODEL_VERSION', 'resnet50_v1')
 CALIBRATION_PATH = os.getenv(
     'CALIBRATION_PATH', str(Path(MODEL_PATH).parent / 'calibration.json')
 )
+# Absolute validation-accuracy floor (percent) a model must clear before it can
+# be promoted, whatever the run-to-run comparison says. Guards the case where
+# MLflow has no history and every candidate would otherwise be waved through.
+MIN_PROMOTE_ACCURACY = float(os.getenv('MIN_PROMOTE_ACCURACY', '60'))
 
 
-def load_temperature() -> float:
+def load_calibration() -> tuple:
     """
-    Read the temperature-scaling factor produced by calibrate.py.
+    Read the temperature and per-class bias produced by calibrate.py and
+    tune_thresholds.py.
 
-    Falls back to 1.0 (raw, uncalibrated softmax) when no calibration file
+    Falls back to (1.0, {}) — raw softmax, no bias — when no calibration file
     exists, so an uncalibrated model still serves normally.
     """
     try:
         with open(CALIBRATION_PATH) as f:
-            t = float(json.load(f).get('temperature', 1.0))
-        if t > 0:
+            cal = json.load(f)
+        t = float(cal.get('temperature', 1.0))
+        bias = cal.get('class_bias', {}) or {}
+        if t <= 0:
+            print(f"! Ignoring non-positive temperature in {CALIBRATION_PATH}")
+            t = 1.0
+        else:
             print(f"✓ Calibration loaded: T = {t:.4f} (from {CALIBRATION_PATH})")
-            return t
-        print(f"! Ignoring non-positive temperature in {CALIBRATION_PATH}")
+        if bias:
+            nonzero = {k: v for k, v in bias.items() if v}
+            print(f"✓ Per-class bias loaded for {len(nonzero)} class(es): {nonzero}")
+        return t, bias
     except FileNotFoundError:
         print(f"! No calibration file at {CALIBRATION_PATH} — using raw softmax "
               f"(run calibrate.py to fix over-confidence)")
     except Exception as e:
         print(f"! Could not read {CALIBRATION_PATH}: {e} — using raw softmax")
-    return 1.0
+    return 1.0, {}
 
 
 # Response models
@@ -139,6 +151,7 @@ class HealthResponse(BaseModel):
     uptime_seconds: float
     temperature: float = 1.0
     calibrated: bool = False
+    class_bias_applied: bool = False
 
 
 # Initialize FastAPI app
@@ -164,13 +177,18 @@ Instrumentator().instrument(app).expose(app)
 predictor: Optional[Predictor] = None
 start_time = time.time()
 
+# Calibration state, refreshed on startup and on every /reload.
+_cal_temperature: float = 1.0
+_cal_bias: dict = {}
+
 
 @app.on_event("startup")
 async def load_model():
     """Load the model on application startup."""
-    global predictor, training_jobs
+    global predictor, training_jobs, _cal_temperature, _cal_bias
 
     training_jobs = _load_jobs()
+    _cal_temperature, _cal_bias = load_calibration()
 
     MODEL_LOADED_GAUGE.set(0)
     try:
@@ -190,7 +208,8 @@ async def load_model():
             species_mapping=species_mapping,
             device='cpu',  # Use CPU for development (change to 'cuda' for GPU)
             confidence_threshold=CONFIDENCE_THRESHOLD,
-            temperature=load_temperature()
+            temperature=_cal_temperature,
+            class_bias=_cal_bias
         )
 
         # Load model weights
@@ -219,7 +238,8 @@ async def health_check():
         "species_count": len(predictor.species_mapping) if predictor else 0,
         "uptime_seconds": time.time() - start_time,
         "temperature": predictor.temperature if predictor else 1.0,
-        "calibrated": bool(predictor and predictor.temperature != 1.0)
+        "calibrated": bool(predictor and predictor.temperature != 1.0),
+        "class_bias_applied": bool(predictor and predictor.has_class_bias)
     }
 
 
@@ -322,7 +342,11 @@ async def predict(image: UploadFile = File(...), gradcam: bool = Query(default=F
 @app.post("/reload")
 async def reload_model_endpoint():
     """Hot-reload the ML model from disk without restarting the service."""
-    global predictor
+    global predictor, _cal_temperature, _cal_bias
+
+    # Re-read calibration too: a promoted model may ship its own temperature
+    # and per-class bias, and keeping the old ones would mis-score it.
+    _cal_temperature, _cal_bias = load_calibration()
 
     try:
         MODEL_LOADED_GAUGE.set(0)
@@ -336,7 +360,8 @@ async def reload_model_endpoint():
             species_mapping=species_mapping,
             device='cpu',
             confidence_threshold=CONFIDENCE_THRESHOLD,
-            temperature=load_temperature()
+            temperature=_cal_temperature,
+            class_bias=_cal_bias
         )
         new_predictor.load_model(WildlifeModel)
 
@@ -403,7 +428,11 @@ async def evaluate_model():
 
         experiment = client.get_experiment_by_name("wildlife-classification")
         if not experiment:
-            return {"can_promote": True, "reason": "no_previous_experiments"}
+            return {
+                "can_promote": False,
+                "reason": "no_previous_experiments_and_no_accuracy_to_check",
+                "min_accuracy": MIN_PROMOTE_ACCURACY,
+            }
 
         runs = client.search_runs(
             experiment_ids=[experiment.experiment_id],
@@ -412,18 +441,43 @@ async def evaluate_model():
         )
 
         if len(runs) < 2:
-            return {"can_promote": True, "reason": "first_training_run", "latest_accuracy": runs[0].data.metrics.get("best_val_acc", 0) if runs else 0}
+            # No baseline to compare against. Comparison alone would wave
+            # anything through — that is how a 17% model was once promoted over
+            # a working 82% one — so fall back to an absolute floor.
+            latest_acc = runs[0].data.metrics.get("best_val_acc", 0) if runs else 0
+            passes_floor = latest_acc >= MIN_PROMOTE_ACCURACY
+            return {
+                "can_promote": passes_floor,
+                "reason": "first_training_run_meets_floor" if passes_floor
+                          else "first_training_run_below_floor",
+                "latest_accuracy": latest_acc,
+                "min_accuracy": MIN_PROMOTE_ACCURACY,
+            }
 
         latest_acc = runs[0].data.metrics.get("best_val_acc", 0)
         previous_acc = runs[1].data.metrics.get("best_val_acc", 0)
         improvement = latest_acc - previous_acc
 
+        # Both gates must pass: the model has to beat the previous run AND clear
+        # an absolute floor. Relative comparison alone lets a chain of bad runs
+        # ratchet production downwards, one small "improvement" at a time.
+        improved = latest_acc > previous_acc
+        passes_floor = latest_acc >= MIN_PROMOTE_ACCURACY
+
+        if not passes_floor:
+            reason = "below_absolute_floor"
+        elif not improved:
+            reason = "accuracy_did_not_improve"
+        else:
+            reason = "accuracy_improved"
+
         return {
-            "can_promote": latest_acc > previous_acc,
+            "can_promote": improved and passes_floor,
             "latest_accuracy": round(latest_acc, 4),
             "previous_accuracy": round(previous_acc, 4),
             "improvement": round(improvement, 4),
-            "reason": "accuracy_improved" if latest_acc > previous_acc else "accuracy_did_not_improve"
+            "min_accuracy": MIN_PROMOTE_ACCURACY,
+            "reason": reason
         }
     except Exception as e:
         return {"error": str(e), "can_promote": False}

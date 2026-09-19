@@ -21,7 +21,8 @@ class Predictor:
         species_mapping: Dict[int, str],
         device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
         confidence_threshold: float = 0.5,
-        temperature: float = 1.0
+        temperature: float = 1.0,
+        class_bias: Optional[Dict[str, float]] = None
     ):
         """
         Initialize the predictor.
@@ -39,6 +40,16 @@ class Predictor:
         """
         self.device = device
         self.temperature = temperature if temperature and temperature > 0 else 1.0
+
+        # Per-class logit offsets fitted against macro-F1 (see tune_thresholds.py).
+        # The model under-predicts some species regardless of class frequency —
+        # it recovered only 54% of elephants — and a single global temperature
+        # cannot fix a per-class bias. Stored as an index-aligned tensor.
+        self.class_bias_map = class_bias or {}
+        bias_vector = [float(self.class_bias_map.get(species_mapping[i], 0.0))
+                       for i in sorted(species_mapping)]
+        self.class_bias = torch.tensor(bias_vector)
+        self.has_class_bias = any(b != 0.0 for b in bias_vector)
         self.species_mapping = species_mapping
         self.confidence_threshold = confidence_threshold
         self.transforms = transforms.Compose([
@@ -100,7 +111,10 @@ class Predictor:
         # Get predictions
         with torch.no_grad():
             outputs = self.model(image_tensor)
-            probabilities = F.softmax(outputs / self.temperature, dim=1)
+            # Bias first (it decides the class), then temperature (it decides
+            # how confident we claim to be). Temperature cannot change argmax.
+            adjusted = outputs + self.class_bias.to(outputs.device)
+            probabilities = F.softmax(adjusted / self.temperature, dim=1)
             confidence, predicted_idx = torch.max(probabilities, 1)
 
         predicted_idx = predicted_idx.item()
