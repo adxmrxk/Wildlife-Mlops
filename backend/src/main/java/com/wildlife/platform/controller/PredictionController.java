@@ -71,9 +71,13 @@ public class PredictionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(savedPrediction);
     }
 
-    // POST /api/predictions/upload - Upload image and predict species
+    // POST /api/predictions/upload - Upload image and predict species.
+    // gradcam defaults to false: the heatmap costs a backward pass (p95 2472ms
+    // vs 240ms without), so only callers that actually display it should ask.
     @PostMapping("/upload")
-    public ResponseEntity<?> uploadAndPredict(@RequestParam("image") MultipartFile file) {
+    public ResponseEntity<?> uploadAndPredict(
+            @RequestParam("image") MultipartFile file,
+            @RequestParam(defaultValue = "false") boolean gradcam) {
         Path tempFile = null;
         try {
             // 1. Validate file
@@ -87,7 +91,7 @@ public class PredictionController {
             Files.copy(file.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
 
             // 4. Call ML service for prediction
-            MLPredictionResponse mlResponse = mlPredictionService.predict(tempFile.toFile());
+            MLPredictionResponse mlResponse = mlPredictionService.predict(tempFile.toFile(), gradcam);
 
             // 5. Resolve species (auto-create if needed)
             Species species = mlPredictionService.resolveSpecies(mlResponse.getPredicted_species());

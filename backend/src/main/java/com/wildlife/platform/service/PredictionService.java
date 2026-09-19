@@ -87,13 +87,7 @@ public class PredictionService {
     // Calculate average confidence — cached alongside count in predictionStats
     @Cacheable(value = "predictionStats", key = "'avgConfidence'")
     public Double getAverageConfidence() {
-        List<Prediction> predictions = predictionRepository.findAll();
-        if (predictions.isEmpty()) {
-            return 0.0;
-        }
-        return predictions.stream()
-                .mapToDouble(Prediction::getConfidence)
-                .average()
-                .orElse(0.0);
+        Double average = predictionRepository.findAverageConfidence();
+        return average != null ? average : 0.0;
     }
 }

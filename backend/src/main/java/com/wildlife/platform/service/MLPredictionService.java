@@ -6,6 +6,7 @@ import com.wildlife.platform.repository.SpeciesRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -25,18 +26,26 @@ public class MLPredictionService {
     @Value("${ml.service.url}")
     private String mlServiceUrl;
 
-    @Value("${ml.service.timeout:30000}")
-    private int timeout;
-
     @Value("${prediction.auto-create-species:true}")
     private boolean autoCreateSpecies;
 
     private final RestTemplate restTemplate;
     private final SpeciesRepository speciesRepository;
 
-    public MLPredictionService(SpeciesRepository speciesRepository) {
+    public MLPredictionService(
+            SpeciesRepository speciesRepository,
+            @Value("${ml.service.timeout:30000}") int timeoutMs,
+            @Value("${ml.service.connect-timeout:2000}") int connectTimeoutMs) {
+
         this.speciesRepository = speciesRepository;
-        this.restTemplate = new RestTemplate();
+
+        // A bare `new RestTemplate()` has NO timeouts: if the ML service hangs,
+        // the calling thread blocks forever and the pool is exhausted under load.
+        // ml.service.timeout was being read into a field and never applied.
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(timeoutMs);
+        this.restTemplate = new RestTemplate(factory);
     }
 
     /**
@@ -47,7 +56,19 @@ public class MLPredictionService {
      * @throws RuntimeException If ML service call fails
      */
     public MLPredictionResponse predict(File imageFile) {
-        String predictUrl = mlServiceUrl + "/predict?gradcam=true";
+        return predict(imageFile, false);
+    }
+
+    /**
+     * Predict species, optionally generating a GradCAM heatmap.
+     *
+     * The heatmap requires a backward pass and dominates request time —
+     * measured p95 2472ms with it versus 240ms without. It is therefore
+     * opt-in: interactive single uploads that display the heatmap ask for it,
+     * bulk and API callers do not pay for a picture nobody looks at.
+     */
+    public MLPredictionResponse predict(File imageFile, boolean gradcam) {
+        String predictUrl = mlServiceUrl + "/predict?gradcam=" + gradcam;
 
         try {
             // Prepare multipart request

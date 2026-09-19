@@ -61,10 +61,12 @@ export async function fetchPredictionsBySpecies(speciesId: number): Promise<Pred
   return data;
 }
 
-export async function uploadImage(file: File): Promise<Prediction> {
+// gradcam defaults to true here because the Predict page renders the heatmap.
+// It roughly triples request time, so callers that don't show it pass false.
+export async function uploadImage(file: File, gradcam = true): Promise<Prediction> {
   const formData = new FormData();
   formData.append('image', file);
-  const { data } = await api.post('/predictions/upload', formData, {
+  const { data } = await api.post(`/predictions/upload?gradcam=${gradcam}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;

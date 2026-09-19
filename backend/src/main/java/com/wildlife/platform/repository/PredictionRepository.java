@@ -2,6 +2,7 @@ package com.wildlife.platform.repository;
 
 import com.wildlife.platform.model.Prediction;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,6 +23,12 @@ public interface PredictionRepository extends JpaRepository<Prediction, Long> {
 
     // Predictions a human has already labelled — the feedback training set.
     List<Prediction> findByCorrectSpeciesIsNotNull();
+
+    // Average confidence computed in the database. The previous implementation
+    // called findAll() and averaged in Java, which loaded every prediction row
+    // (plus its eagerly-fetched Species) into the heap to produce one number.
+    @Query("select avg(p.confidence) from Prediction p")
+    Double findAverageConfidence();
 
     // JpaRepository also gives us:
     // - save(Prediction) - save a prediction

@@ -44,6 +44,31 @@ MODEL_PATH = os.getenv('MODEL_PATH', 'models/wildlife_model_resnet50.pt')
 SPECIES_MAPPING_PATH = os.getenv('SPECIES_MAPPING_PATH', 'data/species_mapping.json')
 CONFIDENCE_THRESHOLD = float(os.getenv('CONFIDENCE_THRESHOLD', '0.5'))
 MODEL_VERSION = os.getenv('MODEL_VERSION', 'resnet50_v1')
+CALIBRATION_PATH = os.getenv(
+    'CALIBRATION_PATH', str(Path(MODEL_PATH).parent / 'calibration.json')
+)
+
+
+def load_temperature() -> float:
+    """
+    Read the temperature-scaling factor produced by calibrate.py.
+
+    Falls back to 1.0 (raw, uncalibrated softmax) when no calibration file
+    exists, so an uncalibrated model still serves normally.
+    """
+    try:
+        with open(CALIBRATION_PATH) as f:
+            t = float(json.load(f).get('temperature', 1.0))
+        if t > 0:
+            print(f"✓ Calibration loaded: T = {t:.4f} (from {CALIBRATION_PATH})")
+            return t
+        print(f"! Ignoring non-positive temperature in {CALIBRATION_PATH}")
+    except FileNotFoundError:
+        print(f"! No calibration file at {CALIBRATION_PATH} — using raw softmax "
+              f"(run calibrate.py to fix over-confidence)")
+    except Exception as e:
+        print(f"! Could not read {CALIBRATION_PATH}: {e} — using raw softmax")
+    return 1.0
 
 
 # Response models
@@ -63,7 +88,47 @@ class PredictionResponse(BaseModel):
 
 
 # ─── Training job tracker ──────────────────────────────────────────────────
+# Persisted to disk: a training run lasts 25 minutes to several hours, and an
+# in-memory dict loses every in-flight job on restart, crash or OOM kill. The
+# Airflow DAG then polls a job id that no longer exists and fails with a 404
+# even though nothing was wrong with the training itself.
+JOBS_PATH = os.getenv('JOBS_PATH', str(Path(MODEL_PATH).parent / 'training_jobs.json'))
 training_jobs: dict = {}  # job_id -> { status, started_at, completed_at, error }
+
+
+def _load_jobs() -> dict:
+    """Restore the job registry written by a previous process."""
+    try:
+        with open(JOBS_PATH) as f:
+            jobs = json.load(f)
+        # A job still marked RUNNING cannot survive its process: the training
+        # subprocess died with it. Mark it INTERRUPTED so callers can tell the
+        # difference between "training failed" and "the service restarted".
+        for job_id, job in jobs.items():
+            if job.get('status') == 'RUNNING':
+                job['status'] = 'INTERRUPTED'
+                job['error'] = 'ML service restarted while this job was running'
+                job['completed_at'] = time.time()
+        if jobs:
+            print(f"✓ Restored {len(jobs)} training job(s) from {JOBS_PATH}")
+        return jobs
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        print(f"! Could not read {JOBS_PATH}: {e}")
+        return {}
+
+
+def _save_jobs() -> None:
+    """Write the job registry atomically so a crash can't truncate it."""
+    try:
+        Path(JOBS_PATH).parent.mkdir(parents=True, exist_ok=True)
+        tmp = f"{JOBS_PATH}.tmp"
+        with open(tmp, 'w') as f:
+            json.dump(training_jobs, f, indent=2)
+        os.replace(tmp, JOBS_PATH)
+    except Exception as e:
+        print(f"! Could not persist training jobs: {e}")
 
 
 class HealthResponse(BaseModel):
@@ -72,6 +137,8 @@ class HealthResponse(BaseModel):
     model_version: str
     species_count: int
     uptime_seconds: float
+    temperature: float = 1.0
+    calibrated: bool = False
 
 
 # Initialize FastAPI app
@@ -101,7 +168,9 @@ start_time = time.time()
 @app.on_event("startup")
 async def load_model():
     """Load the model on application startup."""
-    global predictor
+    global predictor, training_jobs
+
+    training_jobs = _load_jobs()
 
     MODEL_LOADED_GAUGE.set(0)
     try:
@@ -120,7 +189,8 @@ async def load_model():
             model_path=MODEL_PATH,
             species_mapping=species_mapping,
             device='cpu',  # Use CPU for development (change to 'cuda' for GPU)
-            confidence_threshold=CONFIDENCE_THRESHOLD
+            confidence_threshold=CONFIDENCE_THRESHOLD,
+            temperature=load_temperature()
         )
 
         # Load model weights
@@ -147,7 +217,9 @@ async def health_check():
         "model_loaded": predictor is not None and predictor.is_loaded,
         "model_version": MODEL_VERSION,
         "species_count": len(predictor.species_mapping) if predictor else 0,
-        "uptime_seconds": time.time() - start_time
+        "uptime_seconds": time.time() - start_time,
+        "temperature": predictor.temperature if predictor else 1.0,
+        "calibrated": bool(predictor and predictor.temperature != 1.0)
     }
 
 
@@ -263,7 +335,8 @@ async def reload_model_endpoint():
             model_path=MODEL_PATH,
             species_mapping=species_mapping,
             device='cpu',
-            confidence_threshold=CONFIDENCE_THRESHOLD
+            confidence_threshold=CONFIDENCE_THRESHOLD,
+            temperature=load_temperature()
         )
         new_predictor.load_model(WildlifeModel)
 
@@ -284,7 +357,8 @@ async def trigger_training(epochs: int = 10):
     Returns a job_id — poll /train/status/{job_id} for completion.
     """
     job_id = str(uuid.uuid4())[:8]
-    training_jobs[job_id] = {"status": "RUNNING", "started_at": time.time()}
+    training_jobs[job_id] = {"status": "RUNNING", "started_at": time.time(), "epochs": epochs}
+    _save_jobs()
 
     def run():
         try:
@@ -302,6 +376,7 @@ async def trigger_training(epochs: int = 10):
             training_jobs[job_id]["status"] = "FAILED"
             training_jobs[job_id]["error"] = str(e)
         training_jobs[job_id]["completed_at"] = time.time()
+        _save_jobs()
 
     threading.Thread(target=run, daemon=True).start()
     return {"job_id": job_id, "status": "RUNNING"}

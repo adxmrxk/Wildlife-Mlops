@@ -38,6 +38,7 @@ COPY train.py .
 COPY retrain.py .
 COPY predict.py .
 COPY create_dummy_model.py .
+COPY calibrate.py .
 COPY src/ ./src/
 COPY data/species_mapping.json ./data/species_mapping.json
 COPY models/wildlife_model_resnet50.pt ./models/wildlife_model_resnet50.pt

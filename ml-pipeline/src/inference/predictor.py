@@ -20,7 +20,8 @@ class Predictor:
         model_path: str,
         species_mapping: Dict[int, str],
         device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
-        confidence_threshold: float = 0.5
+        confidence_threshold: float = 0.5,
+        temperature: float = 1.0
     ):
         """
         Initialize the predictor.
@@ -30,8 +31,14 @@ class Predictor:
             species_mapping: Dictionary mapping class indices to species names
             device: Device to run inference on ('cuda' or 'cpu')
             confidence_threshold: Minimum confidence for predictions
+            temperature: Temperature-scaling divisor applied to logits before
+                softmax. 1.0 leaves the raw (typically over-confident) output
+                alone; >1.0 softens it. Fitted by calibrate.py. Scaling logits
+                by a constant cannot change argmax, so accuracy is unaffected —
+                only the reported probability becomes honest.
         """
         self.device = device
+        self.temperature = temperature if temperature and temperature > 0 else 1.0
         self.species_mapping = species_mapping
         self.confidence_threshold = confidence_threshold
         self.transforms = transforms.Compose([
@@ -59,7 +66,11 @@ class Predictor:
             return
 
         num_classes = len(self.species_mapping)
-        self.model = model_class(num_classes=num_classes)
+        # pretrained=False: the ImageNet weights would be downloaded (~98MB) and
+        # then immediately overwritten by load_state_dict below. Skipping them
+        # cuts model-load time and, on a cold container, removes a hard
+        # dependency on outbound internet access just to serve predictions.
+        self.model = model_class(num_classes=num_classes, pretrained=False)
         self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
         self.model.to(self.device)
         self.model.eval()
@@ -89,7 +100,7 @@ class Predictor:
         # Get predictions
         with torch.no_grad():
             outputs = self.model(image_tensor)
-            probabilities = F.softmax(outputs, dim=1)
+            probabilities = F.softmax(outputs / self.temperature, dim=1)
             confidence, predicted_idx = torch.max(probabilities, 1)
 
         predicted_idx = predicted_idx.item()
