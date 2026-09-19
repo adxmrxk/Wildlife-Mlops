@@ -29,8 +29,15 @@ RUN pip install --no-cache-dir \
     opencv-python-headless \
     scipy
 
+# boto3 — required by MLflow to upload run artifacts to MinIO/S3
+RUN pip install --no-cache-dir boto3
+
 # Copy application code
 COPY app.py .
+COPY train.py .
+COPY retrain.py .
+COPY predict.py .
+COPY create_dummy_model.py .
 COPY src/ ./src/
 COPY data/species_mapping.json ./data/species_mapping.json
 COPY models/wildlife_model_resnet50.pt ./models/wildlife_model_resnet50.pt

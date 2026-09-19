@@ -63,6 +63,18 @@ services:
       SPECIES_MAPPING_PATH: data/species_mapping.json
       MODEL_VERSION: resnet50_v1
       CONFIDENCE_THRESHOLD: "0.5"
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      # MLflow uploads run artifacts straight to MinIO, so the client needs these too
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+    # Shared with the retrain daemon so /train writes and /reload reads the same
+    # model files, and so training data is visible to the in-service /train job.
+    volumes:
+      - ./ml-pipeline/models:/app/models
+      - ./ml-pipeline/data:/app/data
+    # PyTorch DataLoader workers need more than Docker's default 64MB /dev/shm
+    shm_size: "1gb"
 
   # ─── React Frontend ────────────────────────────────────────────────────────
   frontend:
@@ -89,6 +101,10 @@ services:
       CONFIDENCE_THRESHOLD: "0.70"
       CHECK_INTERVAL_MINUTES: "60"
       MIN_PREDICTIONS_FOR_CHECK: "10"
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      PYTHONUNBUFFERED: "1"
     depends_on:
       - prometheus
       - ml-service
@@ -96,10 +112,11 @@ services:
     volumes:
       - ./ml-pipeline/models:/app/models
       - ./ml-pipeline/data:/app/data
+    shm_size: "1gb"
 
   # ─── MinIO (S3-compatible Object Storage) ─────────────────────────────────
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: wildlife-minio
     ports:
       - "9000:9000"   # S3 API
@@ -118,7 +135,7 @@ services:
 
   # ─── MinIO bucket initializer ──────────────────────────────────────────────
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: wildlife-minio-init
     depends_on:
       minio:
@@ -196,6 +213,9 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # Cap the JVM heap — the default sizes itself off host RAM and gets
+      # OOM-killed when the ML service is training alongside it.
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:

@@ -13,6 +13,7 @@ Trigger this DAG manually from the Airflow UI (http://localhost:8082)
 or schedule it on a cron expression by setting `schedule`.
 """
 
+import os
 import time
 import requests
 from datetime import datetime, timedelta
@@ -23,6 +24,11 @@ from airflow.operators.empty import EmptyOperator
 ML_SERVICE = "http://ml-service:8000"
 TRAINING_TIMEOUT = 7200   # 2 hours
 POLL_INTERVAL   = 30      # seconds between status checks
+
+# Epochs per DAG-triggered training run. On CPU one epoch over the full
+# dataset takes ~25 min here, so 10 epochs (~4h) cannot finish inside
+# TRAINING_TIMEOUT. Override with the ML_TRAIN_EPOCHS env var.
+TRAINING_EPOCHS = int(os.getenv("ML_TRAIN_EPOCHS", "1"))
 
 default_args = {
     "owner": "wildlife-mlops",
@@ -44,7 +50,7 @@ def check_ml_service_health(**ctx):
 
 def trigger_training(**ctx):
     """Start async training and push the job_id to XCom."""
-    resp = requests.post(f"{ML_SERVICE}/train", params={"epochs": 10}, timeout=15)
+    resp = requests.post(f"{ML_SERVICE}/train", params={"epochs": TRAINING_EPOCHS}, timeout=15)
     resp.raise_for_status()
     job = resp.json()
     print(f"Training job started: {job['job_id']}")

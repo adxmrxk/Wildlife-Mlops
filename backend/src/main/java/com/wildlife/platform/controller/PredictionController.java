@@ -2,6 +2,7 @@ package com.wildlife.platform.controller;
 
 import com.wildlife.platform.dto.MLPredictionResponse;
 import com.wildlife.platform.messaging.PredictionEventProducer;
+import com.wildlife.platform.messaging.RetrainSignalConsumer;
 import com.wildlife.platform.model.Prediction;
 import com.wildlife.platform.model.Species;
 import com.wildlife.platform.service.FileStorageService;
@@ -32,6 +33,7 @@ public class PredictionController {
     private final FileStorageService fileStorageService;
     private final S3StorageService s3StorageService;
     private final PredictionEventProducer eventProducer;
+    private final RetrainSignalConsumer retrainSignalConsumer;
 
     // GET /api/predictions - Get all predictions
     @GetMapping
@@ -181,6 +183,32 @@ public class PredictionController {
     public ResponseEntity<Void> deleteAllPredictions() {
         predictionService.deleteAllPredictions();
         return ResponseEntity.noContent().build();
+    }
+
+    // GET /api/predictions/review-queue - Low-confidence predictions awaiting
+    // human review, plus how much feedback has been given so far.
+    @GetMapping("/review-queue")
+    public ResponseEntity<Map<String, Object>> getReviewQueue(
+            @RequestParam(defaultValue = "0.7") double threshold) {
+
+        List<Prediction> pending = predictionService.getReviewQueue(threshold);
+        List<Prediction> reviewed = predictionService.getReviewedPredictions();
+
+        long modelWasRight = reviewed.stream()
+                .filter(p -> p.getPredictedSpecies() != null
+                        && p.getPredictedSpecies().getName().equalsIgnoreCase(p.getCorrectSpecies()))
+                .count();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("threshold", threshold);
+        body.put("pendingCount", pending.size());
+        body.put("pending", pending);
+        body.put("reviewedCount", reviewed.size());
+        body.put("modelCorrectOnReviewed", modelWasRight);
+        body.put("reviewedAccuracy",
+                reviewed.isEmpty() ? null : (double) modelWasRight / reviewed.size());
+        body.put("retrainSignals", retrainSignalConsumer.getSignals());
+        return ResponseEntity.ok(body);
     }
 
     // GET /api/predictions/stats - Get prediction statistics

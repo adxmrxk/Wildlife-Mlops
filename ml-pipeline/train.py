@@ -93,10 +93,11 @@ def main(args):
         unfreeze_at_epoch=args.unfreeze_at
     )
 
-    # Save trained model
-    model_path = f'models/wildlife_model_{args.model}.pt'
+    # Save trained model as a CANDIDATE — the live model is only replaced by
+    # POST /promote, and only after /evaluate confirms accuracy improved.
+    model_path = f'models/candidate_wildlife_model_{args.model}.pt'
     trainer.save_model(model_path)
-    print(f"\n✓ Model saved to {model_path}")
+    print(f"\n✓ Candidate model saved to {model_path}")
 
     # Record final metrics
     final_metrics = {
@@ -150,11 +151,25 @@ def main(args):
         # Log model file as artifact
         mlflow.log_artifact(model_path)
 
-        # Register model in MLflow Model Registry
-        run_id = mlflow.active_run().info.run_id
-        model_uri = f"runs:/{run_id}/{model_path}"
-        mlflow.register_model(model_uri, "wildlife-classifier")
-        print(f"✓ Model registered in MLflow (run: {run_id})")
+        # Register the model in the MLflow Model Registry.
+        # The weights are registered straight from the run's artifact URI:
+        # mlflow.pytorch.log_model() is not used because it requires a newer
+        # torch than this image pins, and register_model() on a runs:/ URI
+        # expects a logged model rather than a plain .pt artifact.
+        active_run = mlflow.active_run()
+        run_id = active_run.info.run_id
+        client = mlflow.tracking.MlflowClient()
+        try:
+            client.create_registered_model("wildlife-classifier")
+        except Exception:
+            pass  # already registered
+        model_version = client.create_model_version(
+            name="wildlife-classifier",
+            source=f"{active_run.info.artifact_uri}/{Path(model_path).name}",
+            run_id=run_id,
+        )
+        print(f"✓ Model registered in MLflow as wildlife-classifier "
+              f"v{model_version.version} (run: {run_id})")
 
     # Print final summary
     print("\n" + "=" * 60)
@@ -189,7 +204,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--species',
         type=str,
-        default='lion,elephant,zebra,giraffe',
+        default='butterfly,cat,chicken,cow,dog,elephant,horse,sheep,spider,squirrel',
         help='Comma-separated list of species to classify'
     )
 
@@ -224,7 +239,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=32,
+        default=8,
         help='Batch size for training'
     )
     parser.add_argument(
@@ -242,7 +257,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num-workers',
         type=int,
-        default=4,
+        default=0,
         help='Number of data loading workers'
     )
     parser.add_argument(

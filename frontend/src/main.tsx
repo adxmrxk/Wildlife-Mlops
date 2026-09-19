@@ -7,6 +7,9 @@ import Predict from './pages/Predict';
 import Predictions from './pages/Predictions';
 import SpeciesPage from './pages/SpeciesPage';
 import System from './pages/System';
+import ModelInsights from './pages/ModelInsights';
+import BatchPredict from './pages/BatchPredict';
+import ReviewQueue from './pages/ReviewQueue';
 import './index.css';
 
 const router = createBrowserRouter([
@@ -16,6 +19,9 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'predict', element: <Predict /> },
+      { path: 'batch', element: <BatchPredict /> },
+      { path: 'insights', element: <ModelInsights /> },
+      { path: 'review', element: <ReviewQueue /> },
       { path: 'predictions', element: <Predictions /> },
       { path: 'species', element: <SpeciesPage /> },
       { path: 'system', element: <System /> },

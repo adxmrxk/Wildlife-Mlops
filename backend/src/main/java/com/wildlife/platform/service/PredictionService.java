@@ -27,6 +27,17 @@ public class PredictionService {
         return predictionRepository.findById(id);
     }
 
+    // Predictions the model was unsure about that nobody has corrected yet.
+    public List<Prediction> getReviewQueue(double confidenceThreshold) {
+        return predictionRepository
+                .findByConfidenceLessThanAndCorrectSpeciesIsNullOrderByConfidenceAsc(confidenceThreshold);
+    }
+
+    // Predictions a human has labelled, with whether the model got it right.
+    public List<Prediction> getReviewedPredictions() {
+        return predictionRepository.findByCorrectSpeciesIsNotNull();
+    }
+
     // Get all predictions for a specific species
     public List<Prediction> getPredictionsBySpecies(Long speciesId) {
         return predictionRepository.findByPredictedSpeciesId(speciesId);

@@ -209,11 +209,11 @@ class Trainer:
         patience_counter = 0
         max_patience = 7
 
-        mlflow.start_run()
-        mlflow.log_param('epochs', epochs)
-        mlflow.log_param('model', self.model.model_name)
-        mlflow.log_param('freeze_backbone', freeze_backbone)
-
+        # NOTE: no mlflow.start_run() here. train.py owns the MLflow run and
+        # logs params, per-epoch metrics and best_val_acc into it. Opening a
+        # second run here produced an extra run with no best_val_acc, which
+        # /evaluate then compared against — making the promotion gate always
+        # pass (previous_accuracy resolved to 0).
         for epoch in range(1, epochs + 1):
             print(f"\n{'='*50}")
             print(f"Epoch {epoch}/{epochs}")
@@ -235,11 +235,6 @@ class Trainer:
             print(f"\nTrain Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
             print(f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%\n")
 
-            mlflow.log_metric('train_loss', train_loss, step=epoch)
-            mlflow.log_metric('train_acc', train_acc, step=epoch)
-            mlflow.log_metric('val_loss', val_loss, step=epoch)
-            mlflow.log_metric('val_acc', val_acc, step=epoch)
-
             self.scheduler.step()
 
             # Early stopping
@@ -253,7 +248,6 @@ class Trainer:
                     print(f"\nEarly stopping at epoch {epoch}")
                     break
 
-        mlflow.end_run()
         return self.history
 
     def _save_checkpoint(self, epoch: int, val_acc: float):

@@ -16,8 +16,17 @@ function Navbar() {
         <Link to="/predict" className={location.pathname === '/predict' ? 'active' : ''}>
           Predict
         </Link>
+        <Link to="/batch" className={location.pathname === '/batch' ? 'active' : ''}>
+          Batch
+        </Link>
         <Link to="/predictions" className={location.pathname === '/predictions' ? 'active' : ''}>
           Predictions
+        </Link>
+        <Link to="/review" className={location.pathname === '/review' ? 'active' : ''}>
+          Review
+        </Link>
+        <Link to="/insights" className={location.pathname === '/insights' ? 'active' : ''}>
+          Insights
         </Link>
         <Link to="/species" className={location.pathname === '/species' ? 'active' : ''}>
           Species

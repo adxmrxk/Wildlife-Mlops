@@ -1,0 +1,248 @@
+.batch {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.batch h1 {
+  margin-bottom: 0.5rem;
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), var(--secondary), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -1px;
+}
+
+.batch-sub {
+  color: var(--text-dim);
+  margin-bottom: 2rem;
+  max-width: 62ch;
+  line-height: 1.6;
+}
+
+.dropzone {
+  border: 2px dashed rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-lg);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  background: rgba(26, 26, 46, 0.4);
+}
+
+.dropzone:hover,
+.dropzone.dragging {
+  border-color: var(--primary);
+  background: rgba(26, 26, 46, 0.7);
+  transform: translateY(-2px);
+}
+
+.drop-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.chosen {
+  margin-top: 1rem;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #ff6b6b;
+  margin-top: 1rem;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.75rem 1.6rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.actions button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actions button.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.stat {
+  background: rgba(26, 26, 46, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.stat span {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+.stat strong {
+  font-size: 2rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.panel {
+  background: rgba(26, 26, 46, 0.6);
+  backdrop-filter: blur(20px);
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 2rem;
+}
+
+.panel h2 {
+  font-size: 1.3rem;
+  margin-bottom: 1.25rem;
+}
+
+.dist-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 40px;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.6rem;
+}
+
+.dist-name {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.dist-track {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  height: 0.85rem;
+  overflow: hidden;
+}
+
+.dist-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  transition: width 0.5s ease;
+}
+
+.dist-count {
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+table.results {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+table.results th,
+table.results td {
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+table.results thead th {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.file {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.conf {
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.conf.ok {
+  background: rgba(46, 204, 113, 0.18);
+  color: #58d68d;
+}
+
+.conf.low {
+  background: rgba(231, 76, 60, 0.18);
+  color: #ec7063;
+}
+
+.row-error {
+  opacity: 0.65;
+}
+
+.err {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .batch h1 {
+    font-size: 2rem;
+  }
+  .panel {
+    padding: 1.25rem;
+  }
+}

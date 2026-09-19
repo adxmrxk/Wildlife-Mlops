@@ -7,6 +7,7 @@ import time
 import threading
 import subprocess
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
@@ -355,8 +356,332 @@ async def evaluate_model():
 
 @app.post("/promote")
 async def promote_model():
-    """Promote the latest trained model to production by hot-reloading it."""
-    return await reload_model_endpoint()
+    """
+    Promote the latest trained candidate to production, then hot-reload it.
+
+    train.py writes new weights to a candidate file rather than overwriting the
+    live model, so a failed or worse training run can never take production
+    down. Promotion is the step that makes a candidate live. The outgoing model
+    is kept as <MODEL_PATH>.previous so a bad promotion can be rolled back.
+    """
+    import shutil
+
+    candidate = os.getenv(
+        'CANDIDATE_MODEL_PATH',
+        str(Path(MODEL_PATH).parent / f"candidate_{Path(MODEL_PATH).name}")
+    )
+
+    promoted_from = None
+    if os.path.exists(candidate):
+        try:
+            if os.path.exists(MODEL_PATH):
+                shutil.copyfile(MODEL_PATH, f"{MODEL_PATH}.previous")
+            shutil.copyfile(candidate, MODEL_PATH)
+            promoted_from = candidate
+            print(f"✓ Promoted candidate {candidate} -> {MODEL_PATH}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Promotion failed: {str(e)}")
+    else:
+        print(f"No candidate at {candidate} — reloading current live model")
+
+    result = await reload_model_endpoint()
+    result["promoted_from"] = promoted_from
+    return result
+
+
+# ─── Model version management ──────────────────────────────────────────────
+def _model_file_info(path: str) -> Optional[dict]:
+    """Describe a model file on disk, or None if it isn't there."""
+    p = Path(path)
+    if not p.is_file():
+        return None
+    stat = p.stat()
+    return {
+        "path": str(p),
+        "size_mb": round(stat.st_size / (1024 * 1024), 2),
+        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
+@app.get("/models/versions")
+async def list_model_versions():
+    """
+    Show every model file this service can serve — the live model, the
+    rollback target, and any candidate waiting for promotion — alongside the
+    versions recorded in the MLflow Model Registry.
+    """
+    candidate = os.getenv(
+        'CANDIDATE_MODEL_PATH',
+        str(Path(MODEL_PATH).parent / f"candidate_{Path(MODEL_PATH).name}")
+    )
+
+    local = {
+        "live": _model_file_info(MODEL_PATH),
+        "previous": _model_file_info(f"{MODEL_PATH}.previous"),
+        "candidate": _model_file_info(candidate),
+    }
+
+    registry = []
+    registry_error = None
+    try:
+        import mlflow
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5001"))
+        client = mlflow.tracking.MlflowClient()
+        for mv in client.search_model_versions("name='wildlife-classifier'"):
+            registry.append({
+                "version": mv.version,
+                "run_id": mv.run_id,
+                "status": mv.status,
+                "created": datetime.fromtimestamp(mv.creation_timestamp / 1000).isoformat(),
+            })
+        registry.sort(key=lambda v: int(v["version"]), reverse=True)
+    except Exception as e:
+        registry_error = str(e)
+
+    return {
+        "model_version": MODEL_VERSION,
+        "model_loaded": bool(predictor and predictor.is_loaded),
+        "local_files": local,
+        "can_rollback": local["previous"] is not None,
+        "can_promote": local["candidate"] is not None,
+        "registry": registry,
+        "registry_error": registry_error,
+    }
+
+
+@app.post("/models/rollback")
+async def rollback_model():
+    """
+    Roll back to the previously live model and hot-reload it.
+
+    /promote saves the outgoing model as <MODEL_PATH>.previous; this swaps it
+    back. The two files are exchanged, so a rollback can itself be undone.
+    """
+    import shutil
+
+    previous = f"{MODEL_PATH}.previous"
+    if not os.path.exists(previous):
+        raise HTTPException(
+            status_code=404,
+            detail="No previous model to roll back to. Promote a model first."
+        )
+
+    try:
+        # Swap live <-> previous so rollback is reversible.
+        swap = f"{MODEL_PATH}.swap"
+        shutil.copyfile(MODEL_PATH, swap)
+        shutil.copyfile(previous, MODEL_PATH)
+        shutil.move(swap, previous)
+        print(f"✓ Rolled back {MODEL_PATH} to its previous weights")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rollback failed: {str(e)}")
+
+    result = await reload_model_endpoint()
+    result["rolled_back"] = True
+    return result
+
+
+# ─── Model evaluation report ───────────────────────────────────────────────
+evaluation_jobs: dict = {}  # job_id -> { status, started_at, completed_at, report, error }
+
+VAL_DIR = os.getenv('VAL_DIR', 'data/val')
+
+
+def _score_validation_set(samples_per_class: int) -> dict:
+    """
+    Run the live model over the validation set and build a full
+    classification report: confusion matrix plus per-class precision,
+    recall and F1. Pure inference — no training, no weight changes.
+    """
+    valid_ext = {'.jpg', '.jpeg', '.png', '.bmp'}
+    classes = [predictor.species_mapping[i] for i in sorted(predictor.species_mapping)]
+    index_of = {name: i for i, name in enumerate(classes)}
+    n = len(classes)
+
+    # matrix[actual][predicted]
+    matrix = [[0] * n for _ in range(n)]
+    confidences: list[float] = []
+    skipped = 0
+
+    for actual in classes:
+        class_dir = Path(VAL_DIR) / actual
+        if not class_dir.is_dir():
+            continue
+        files = sorted(f for f in class_dir.iterdir()
+                       if f.is_file() and f.suffix.lower() in valid_ext)
+        if samples_per_class > 0:
+            files = files[:samples_per_class]
+        for f in files:
+            try:
+                r = predictor.predict_single(str(f))
+            except Exception:
+                skipped += 1
+                continue
+            matrix[index_of[actual]][index_of[r['predicted_species']]] += 1
+            confidences.append(r['confidence'])
+
+    # Per-class precision / recall / F1 from the matrix
+    per_class = {}
+    total = correct = 0
+    for i, name in enumerate(classes):
+        tp = matrix[i][i]
+        actual_total = sum(matrix[i])          # row = true occurrences
+        predicted_total = sum(row[i] for row in matrix)  # column = times predicted
+        precision = tp / predicted_total if predicted_total else 0.0
+        recall = tp / actual_total if actual_total else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        per_class[name] = {
+            "support": actual_total,
+            "correct": tp,
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+        }
+        correct += tp
+        total += actual_total
+
+    # Macro averages weight every class equally — the honest number when the
+    # dataset is imbalanced (dog has 973 val images, elephant 290).
+    macro = {
+        k: round(sum(c[k] for c in per_class.values()) / len(per_class), 4)
+        for k in ("precision", "recall", "f1")
+    } if per_class else {}
+
+    sorted_by_f1 = sorted(per_class.items(), key=lambda kv: kv[1]["f1"])
+
+    return {
+        "model_version": MODEL_VERSION,
+        "model_path": MODEL_PATH,
+        "evaluated_at": datetime.now().isoformat(),
+        "samples_per_class": samples_per_class if samples_per_class > 0 else "all",
+        "images_scored": total,
+        "images_skipped": skipped,
+        "accuracy": round(correct / total, 4) if total else 0.0,
+        "macro_avg": macro,
+        "mean_confidence": round(sum(confidences) / len(confidences), 4) if confidences else 0.0,
+        "classes": classes,
+        "confusion_matrix": matrix,
+        "per_class": per_class,
+        "weakest_classes": [name for name, _ in sorted_by_f1[:3]],
+        "strongest_classes": [name for name, _ in reversed(sorted_by_f1[-3:])],
+    }
+
+
+@app.post("/evaluate/report")
+async def start_evaluation_report(samples_per_class: int = Query(default=20, ge=0, le=1000)):
+    """
+    Score the live model against the validation set in the background.
+
+    samples_per_class=0 scores every image (slow on CPU). Returns a job_id —
+    poll /evaluate/report/{job_id} for the finished report.
+    """
+    if not predictor or not predictor.is_loaded:
+        raise HTTPException(status_code=503, detail="Model not loaded.")
+    if not Path(VAL_DIR).is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Validation directory '{VAL_DIR}' not found in the container."
+        )
+
+    job_id = str(uuid.uuid4())[:8]
+    evaluation_jobs[job_id] = {"status": "RUNNING", "started_at": time.time()}
+
+    def run():
+        try:
+            report = _score_validation_set(samples_per_class)
+            evaluation_jobs[job_id].update(status="SUCCESS", report=report)
+        except Exception as e:
+            evaluation_jobs[job_id].update(status="FAILED", error=str(e))
+        evaluation_jobs[job_id]["completed_at"] = time.time()
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id, "status": "RUNNING", "samples_per_class": samples_per_class}
+
+
+@app.get("/evaluate/report/{job_id}")
+async def get_evaluation_report(job_id: str):
+    """Fetch an evaluation job's status and, once finished, its report."""
+    if job_id not in evaluation_jobs:
+        raise HTTPException(status_code=404, detail="Evaluation job not found")
+    return evaluation_jobs[job_id]
+
+
+@app.get("/evaluate/report")
+async def latest_evaluation_report():
+    """Return the most recent completed evaluation report."""
+    done = [j for j in evaluation_jobs.values() if j.get("status") == "SUCCESS"]
+    if not done:
+        return {"status": "NO_REPORT", "detail": "Run POST /evaluate/report first."}
+    return max(done, key=lambda j: j.get("completed_at", 0))
+
+
+# ─── Batch prediction ──────────────────────────────────────────────────────
+@app.post("/predict/batch")
+async def predict_batch(images: list[UploadFile] = File(...)):
+    """
+    Classify several images in one request.
+
+    Returns a per-image result plus aggregate statistics, so a caller can
+    score a whole folder without issuing one request per file.
+    """
+    if not predictor or not predictor.is_loaded:
+        raise HTTPException(status_code=503, detail="Model not loaded.")
+    if not images:
+        raise HTTPException(status_code=400, detail="No images supplied.")
+    if len(images) > 100:
+        raise HTTPException(status_code=413, detail="Maximum 100 images per batch.")
+
+    results = []
+    temp_paths = []
+    try:
+        for image in images:
+            if not image.content_type or not image.content_type.startswith('image/'):
+                results.append({"filename": image.filename, "error": "not an image"})
+                continue
+            suffix = Path(image.filename).suffix if image.filename else '.jpg'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(await image.read())
+                temp_paths.append(tmp.name)
+            try:
+                r = predictor.predict_single(temp_paths[-1])
+                PREDICTIONS_TOTAL.labels(
+                    species=r['predicted_species'],
+                    is_confident=str(r['is_confident'])
+                ).inc()
+                PREDICTION_CONFIDENCE.observe(r['confidence'])
+                if not r['is_confident']:
+                    LOW_CONFIDENCE_TOTAL.inc()
+                results.append({
+                    "filename": image.filename,
+                    "predicted_species": r['predicted_species'],
+                    "confidence": r['confidence'],
+                    "is_confident": r['is_confident'],
+                    "top_predictions": r['top_predictions'],
+                })
+            except Exception as e:
+                results.append({"filename": image.filename, "error": str(e)})
+
+        ok = [r for r in results if "error" not in r]
+        distribution: dict = {}
+        for r in ok:
+            distribution[r['predicted_species']] = distribution.get(r['predicted_species'], 0) + 1
+
+        return {
+            "count": len(results),
+            "succeeded": len(ok),
+            "failed": len(results) - len(ok),
+            "mean_confidence": round(sum(r['confidence'] for r in ok) / len(ok), 4) if ok else 0.0,
+            "low_confidence_count": sum(1 for r in ok if not r['is_confident']),
+            "species_distribution": distribution,
+            "model_version": MODEL_VERSION,
+            "results": results,
+        }
+    finally:
+        for p in temp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
 
 
 @app.get("/")
@@ -368,7 +693,11 @@ async def root():
         "status": "running",
         "endpoints": {
             "health": "GET /health",
-            "predict": "POST /predict"
+            "predict": "POST /predict",
+            "predict_batch": "POST /predict/batch",
+            "evaluation_report": "POST /evaluate/report",
+            "model_versions": "GET /models/versions",
+            "rollback": "POST /models/rollback"
         }
     }
 
